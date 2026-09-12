@@ -7,7 +7,7 @@ class Transaction:
     date: str       # 格式: YYYY-MM-DD
     type: str       # income / expense
     category: str
-    amout: float
+    amount: float
     note: str = ""
 
     def is_income(self) -> bool:
