@@ -1,5 +1,6 @@
 """命令行界面：增删改查交易"""
 import sys
+import argparse
 from datetime import datetime
 
 import db
@@ -137,35 +138,69 @@ def action_delete() -> None:
     ok = db.delete_transaction(tid)
     print("✅ 删除成功。" if ok else "⚠️ 删除失败。")
 
-# ---------- 主菜单 ----------
+# ---------- 交互菜单 ----------
 MENU = """
 ================ Money Tracker ================
 1. 添加交易
 2. 查看全部
-3. 更新交易
-4. 删除交易
-5. 退出
+3. 筛选查询
+4. 按月份查看
+5. 修改交易
+6. 删除交易
+7. 查看分类
+8. 退出
 ================================================
 """
+
+def action_query() -> None:
+    print("\n🔍 筛选查询 (直接回车 = 不限制) ")
+    date_from = input("  起始日期 YYYY-MM-DD: ").strip() or None
+    date_to = input("  结束日期 YYYY-MM-DD: ").strip() or None
+    type_raw = input("  类型（1收入/2支出/回车不限）: ").strip()
+    type_ = {"1": "income", "2": "expense"}.get(type_raw)
+    category = input("  分类（精确匹配）：").strip() or None
+    keyword = input("  关键字（模糊匹配备注/分类）：").strip() or None
+
+    rows = db.query(date_from=date_from, date_to=date_to, type_=type_, category=category, keyword=keyword)
+    print(f"\n  共 {len(rows)} 条：")
+    print_rows(rows)
+
+def action_month() -> None:
+    ym = input("\n  月份 (YYYY-MM, 回车=本月)：").strip()
+    if not ym:
+        ym = datetime.now().strftime("%Y-%m")
+    try:
+        rows = db.query_by_month(ym)
+    except ValueError as e:
+        print(f"⚠️ {e}")
+        return
+    print(f"\n 📅 {ym} 共 {len(rows)} 条：")
+    print_rows(rows)
+
+def action_categories() -> None:
+    cats = db.list_categories()
+    print("\n📂 已用分类：", "、".join(cats) if cats else " (无) ")
 
 ACTIONS = {
     "1": action_add,
     "2": action_list,
-    "3": action_update,
-    "4": action_delete
+    "3": action_query,
+    "4": action_month,
+    "5": action_update,
+    "6": action_delete,
+    "7": action_categories
 }
 
-def main() -> None:
-    db.init_db()
+def interactive_loop() -> None:
     while True:
         print(MENU)
-        choice = input("请选择操作（1-5）：").strip()
-        if choice == "5":
+        choice = input("请选择操作（1-8）：").strip()
+        if choice == "8":
             print("👋 再见！")
-            sys.exit(0)
+            return
         action = ACTIONS.get(choice)
         if not action:
-            print("⚠️ 无效选择，请输入 1-5。")
+            print("⚠️ 无效选择，请输入 1-8。")
             continue
         try:
             action()
@@ -173,6 +208,105 @@ def main() -> None:
             print("\n↩️ 操作已取消。")
         except Exception as e:
             print(f"⚠️ 出现错误：{e}")
+
+# ---------- argparse 一次性命令 ----------
+def cmd_add(args) -> None:
+    """一次性添加。必填项缺失时退化成交互式。"""
+    if not args.date or not args.type or not args.category or args.amount is None:
+        print("⚠️ 参数不全，进入交互添加模式。")
+        action_add()
+        return
+    new_id = db.add_transaction(args.date, args.type, args.category, args.amount, args.note or "")
+    print(f"✅ 添加成功，ID={new_id}。")
+
+def cmd_list(args) -> None:
+    if args.month:
+        try:
+            rows = db.query_by_month(args.month)
+        except ValueError as e:
+            print(f"⚠️ {e}")
+            return
+    else:
+        rows = db.query(date_from=args.date_from, date_to=args.date_to,
+                        type_=args.type, category=args.category, keyword=args.keyword)
+    print(f"\n  共 {len(rows)} 条：")
+    print_rows(rows)
+
+def cmd_delete(args) -> None:
+    row = db.get_by_id(args.id)
+    if not row:
+        print(f"⚠️ 找不到 ID={args.id} 的交易。")
+        return
+    if not args.yes:
+        confirm = input(f"⚠️ 确认删除? (y/N)：").strip().lower()
+        if confirm != "y":
+            print("↩️ 已取消删除。")
+            return
+    db.delete_transaction(args.id)
+    print("✅ 已删除。")
+
+def cmd_categories(args) -> None:
+    cats = db.list_categories(type_=args.type)
+    print("\n📂 已用分类：", "、".join(cats) if cats else " (无) ")
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Money Tracker 命令行工具")
+    subparsers = parser.add_subparsers(dest="cmd")
+
+    # 添加交易
+    parser_add = subparsers.add_parser("add", help="添加交易")
+    parser_add.add_argument("--date", help="YYYY-MM-DD, 默认今天")
+    parser_add.add_argument("--type", choices=["income", "expense"])
+    parser_add.add_argument("--category")
+    parser_add.add_argument("--amount", type=float)
+    parser_add.add_argument("--note", default="")
+
+    # 查看交易
+    parser_list = subparsers.add_parser("list", help="列出/筛选交易")
+    parser_list.add_argument("--from", dest="date_from", help="起始日期 YYYY-MM-DD")
+    parser_list.add_argument("--to", dest="date_to", help="结束日期 YYYY-MM-DD")
+    parser_list.add_argument("--type", choices=["income", "expense"])
+    parser_list.add_argument("--category")
+    parser_list.add_argument("--keyword", help="备注/分类模糊搜索")
+    parser_list.add_argument("--month", help="按月份查询 YYYY-MM")
+
+    # 删除交易
+    parser_delete = subparsers.add_parser("delete", help="按id删除")
+    parser_delete.add_argument("id", type=int)
+    parser_delete.add_argument("-y", "--yes", action="store_true", help="跳过确认")
+
+    # 查看分类
+    parser_cats = subparsers.add_parser("categories", help="列出已用分类")
+    parser_cats.add_argument("--type", choices=["income", "expense"])
+
+    return parser
+
+def main(argv: list[str] | None = None) -> None:
+    db.init_db()
+
+    argv = sys.argv[1:] if argv is None else argv
+
+    # 无参数进入交互菜单
+    if not argv:
+        interactive_loop()
+        return
+    
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    handlers = {
+        "menu":       lambda a: interactive_loop(),
+        "add" :       cmd_add,
+        "list":       cmd_list,
+        "delete":     cmd_delete,
+        "categories": cmd_categories,
+    }
+
+    handler = handlers.get(args.cmd)
+    if not handler:
+        parser.print_help()
+        return
+    handler(args)
 
 if __name__ == "__main__":
     main()

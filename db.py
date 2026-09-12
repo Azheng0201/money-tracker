@@ -49,6 +49,84 @@ def get_by_id(tid: int) -> sqlite3.Row | None:
         cursor = conn.execute("SELECT * FROM transactions WHERE id = ?", (tid,))
         return cursor.fetchone()
 
+def query(date_from: str | None = None, 
+          date_to: str | None = None,
+          type_: str | None = None, 
+          category: str | None = None,
+          keyword: str | None = None) -> list[sqlite3.Row]:
+    """
+    通用筛选，参数都是可选，条件之间是 AND 关系。
+    - date_from / date_to 格式: YYYY-MM-DD，闭区间
+    - type_: "income" / "expense"
+    - category: 精确匹配
+    - keyword: 备注或分类的模糊匹配
+    按日期倒序返回。
+    """
+    sql = "SELECT * FROM transactions WHERE 1=1"
+    params: list = []
+    if date_from:
+        sql += " AND date >= ?"
+        params.append(date_from)
+    if date_to:
+        sql += " AND date <= ?"
+        params.append(date_to)
+    if type_:
+        sql += " AND type = ?"
+        params.append(type_)
+    if category:
+        sql += " AND category = ?"
+        params.append(category)
+    if keyword:
+        sql += " AND (category LIKE ? OR note LIKE ?)"
+        like = f"%{keyword}%"
+        params.extend([like, like])
+
+    sql += " ORDER BY date DESC, id DESC"
+
+    with get_conn() as conn:
+        cursor = conn.execute(sql, params)
+        return cursor.fetchall()
+
+def query_by_month(ym: str) -> list[sqlite3.Row]:
+    """
+    按月份查询，ym 格式: YYYY-MM
+    返回该月所有交易记录，用 [本月1号, 下月1号)的区间。
+    """
+    if len(ym) != 7 or ym[4] != "-":
+        raise ValueError("月份格式应为 YYYY-MM")
+    
+    year, month = ym.split("-")
+    if not (year.isdigit() and month.isdigit() and 1 <= int(month) <= 12):
+        raise ValueError("月份格式应为 YYYY-MM")
+
+    y, m = int(year), int(month)
+    start = f"{y:04d}-{m:02d}-01"
+    if m == 12:
+        end = f"{y+1:04d}-01-01"
+    else:
+        end = f"{y:04d}-{m+1:02d}-01"
+
+    sql = ("SELECT * FROM transactions WHERE date >= ? AND date < ? "
+           "ORDER BY date DESC, id DESC")
+    with get_conn() as conn:
+        cursor = conn.execute(sql, (start, end))
+        return cursor.fetchall()
+
+def list_categories(type_: str | None = None) -> list[str]:
+    """
+    返回所有分类，按字母升序排列。
+    如果 type_ 为 "income" 或 "expense"，则只返回该类型的分类。
+    """
+    sql = "SELECT DISTINCT category FROM transactions"
+    params: list = []
+    if type_:
+        sql += " WHERE type = ?"
+        params.append(type_)
+    sql += " ORDER BY category"
+
+    with get_conn() as conn:
+        return [r["category"] for r in conn.execute(sql, params)]
+
 def update_transaction(tid: int, **fields) -> bool:
     """
     按 id 更新交易。支持的字段：date, type, category, amout, note。
