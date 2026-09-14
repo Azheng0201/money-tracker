@@ -73,6 +73,40 @@ def print_rows(rows) -> None:
         sign = "+" if r["type"] == "income" else "-"
         print(f"  {r['id']:>4} {r['date']:<12} {r['type']:<8} {r['category']:<6} {sign}￥{r['amount']:>8.2f} {r['note']}")
 
+def print_summary(s: dict, title: str = "") -> None:
+    if title:
+        print(f"\n 📊 {title}")
+    print(f"  收入：  +￥{s['income']:>10.2f}  ({s['income_count']} 笔)")
+    print(f"  支出：  -￥{s['expense']:>10.2f}  ({s['expense_count']} 笔)")
+    sign = "🟢" if s["balance"] >= 0 else "🔴"
+    print(f"  结余：  {sign} ￥{s['balance']:>10.2f}  共 {s['count']} 笔")
+
+def print_month_table(rows: list[dict]) -> None:
+    if not rows:
+        print("  （暂无数据）")
+        return
+    print(f"  {'月份':<9}{'收入':>12}{'支出':>12}{'结余':>12}{'笔数':>6}")
+    print("  " + "-" * 51)
+    for r in rows:
+        print(f"  {r['month']:<9}"
+              f"{r['income']:>12.2f}"
+              f"{r['expense']:>12.2f}"
+              f"{r['balance']:>12.2f}"
+              f"{r['count']:>6}")
+
+def print_category_table(rows: list[dict], type_: str) -> None:
+    label = "收入" if type_ == "income" else "支出"
+    if not rows:
+        print(f"  （暂无{label}数据）")
+        return
+    print(f"  {'分类':<10}{label + '金额':>12}{'占比':>8}{'笔数':>6}")
+    print("  " + "-" * 36)
+    for r in rows:
+        print(f"  {r['category']:<10}"
+            f"{r['total']:>12.2f}"
+            f"{r['percent']:>7.1f}"
+            f"{r['count']:>6}")
+
 # ---------- 各功能 ----------
 def action_add() -> None:
     print("\n➕ 添加交易")
@@ -138,6 +172,46 @@ def action_delete() -> None:
     ok = db.delete_transaction(tid)
     print("✅ 删除成功。" if ok else "⚠️ 删除失败。")
 
+def action_summary() -> None:
+    print("\n📊 汇总")
+    print("  1. 全部")
+    print("  2. 指定月份")
+    print("  3. 按月表格")
+    print("  4. 按分类（支出）")
+    print("  5. 按分类（收入）")
+    sub = input("  请选择（1-5）：").strip()
+
+    if sub == "1":
+        print_summary(db.summary(), "全部汇总")
+    elif sub == "2":
+        ym = input(" 月份（YYYY-MM，回车=本月）：").strip() or datetime.now().strftime("%Y-%m")
+        try:
+            df, dt = _month_range(ym)
+        except ValueError as e:
+            print(f"  ⚠️ {e}")
+            return
+        print_summary(db.summary(df, dt), f"{ym} 汇总")
+    elif sub == "3":
+        print_month_table(db.summary_by_month())
+    elif sub == "4":
+        print_category_table(db.summary_by_category("expense"), "expense")
+    elif sub == "5":
+        print_category_table(db.summary_by_category("income"), "income")
+    else:
+        print("  ⚠️ 无效选项。")
+
+def _month_range(ym: str) -> tuple[str, str]:
+    """把 'YYYY-MM' 换成 （本月1号，下月1号）的半开区间。"""
+    if len(ym) != 7 or ym[4] != "-":
+        raise ValueError("月份格式应为 YYYY-MM")
+    y, m = ym.split("-")
+    if not (y.isdigit() and m.isdigit() and 1<= int(m) <= 12):
+        raise ValueError("月份格式应为 YYYY-MM")
+    y, m = int(y), int(m)
+    start = f"{y:04d}-{m:02d}-01"
+    end = f"{y+1:04d}-01-01" if m == 12 else f"{y:04d}-{m+1:02d}-01"
+    return start, end
+
 # ---------- 交互菜单 ----------
 MENU = """
 ================ Money Tracker ================
@@ -148,7 +222,8 @@ MENU = """
 5. 修改交易
 6. 删除交易
 7. 查看分类
-8. 退出
+8. 汇总统计
+9. 退出
 ================================================
 """
 
@@ -188,19 +263,20 @@ ACTIONS = {
     "4": action_month,
     "5": action_update,
     "6": action_delete,
-    "7": action_categories
+    "7": action_categories,
+    "8": action_summary,
 }
 
 def interactive_loop() -> None:
     while True:
         print(MENU)
-        choice = input("请选择操作（1-8）：").strip()
-        if choice == "8":
+        choice = input("请选择操作（1-9）：").strip()
+        if choice == "9":
             print("👋 再见！")
             return
         action = ACTIONS.get(choice)
         if not action:
-            print("⚠️ 无效选择，请输入 1-8。")
+            print("⚠️ 无效选择，请输入 1-9。")
             continue
         try:
             action()
@@ -249,6 +325,25 @@ def cmd_categories(args) -> None:
     cats = db.list_categories(type_=args.type)
     print("\n📂 已用分类：", "、".join(cats) if cats else " (无) ")
 
+def cmd_summary(args) -> None:
+    date_from, date_to = args.date_from, args.date_to
+    title = "全部汇总"
+    if args.month:
+        try:
+            date_from, date_to = _month_range(args.month)
+        except ValueError as e:
+            print(f"⚠️ {e}")
+            return
+        title = f"{args.month} 汇总"
+
+    if args.by == "month":
+        print_month_table(db.summary_by_month(date_from, date_to))
+    elif args.by == "category":
+        print_category_table(
+            db.summary_by_category(args.type, date_from, date_to), args.type)
+    else:
+        print_summary(db.summary(date_from, date_to), title)
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Money Tracker 命令行工具")
     subparsers = parser.add_subparsers(dest="cmd")
@@ -279,6 +374,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser_cats = subparsers.add_parser("categories", help="列出已用分类")
     parser_cats.add_argument("--type", choices=["income", "expense"])
 
+    # 汇总统计
+    parser_summary = subparsers.add_parser("summary", help="汇总统计")
+    parser_summary.add_argument("--month", help="只统计某月 YYYY-MM")
+    parser_summary.add_argument("--from", dest="date_from", help="起始日期 YYYY-MM-DD")
+    parser_summary.add_argument("--to", dest="date_to", help="结束日期 YYYY-MM-DD")
+    parser_summary.add_argument("--by", choices=["category", "month"], help="按分类或按月展开")
+    parser_summary.add_argument("--type", choices=["income", "expense"], default="expense",
+                                help="配合 --by category 使用， 默认 expense")
+
     return parser
 
 def main(argv: list[str] | None = None) -> None:
@@ -300,6 +404,7 @@ def main(argv: list[str] | None = None) -> None:
         "list":       cmd_list,
         "delete":     cmd_delete,
         "categories": cmd_categories,
+        "summary":    cmd_summary,
     }
 
     handler = handlers.get(args.cmd)

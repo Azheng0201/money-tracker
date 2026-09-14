@@ -127,6 +127,129 @@ def list_categories(type_: str | None = None) -> list[str]:
     with get_conn() as conn:
         return [r["category"] for r in conn.execute(sql, params)]
 
+def summary(date_from: str | None = None,
+            date_to: str | None = None) -> dict:
+    """
+    返回一个区间内的汇总
+    {
+        "income": 收入合计,
+        "expense": 支出合计,
+        "balance": 结余 = income - expense,
+        "count": 总笔数,
+        "income_count": 收入笔数,
+        "expense_count": 支出笔数,
+    }
+    没有匹配记录时各项为0
+    """
+    sql = """
+        SELECT 
+            COALESCE(SUM(CASE WHEN type='income' THEN amount END), 0) AS income,
+            COALESCE(SUM(CASE WHEN type='expense' THEN amount END), 0) AS expense,
+            COUNT(*) as count,
+            SUM(CASE WHEN type='income' THEN 1 ELSE 0 END) AS income_count,
+            SUM(CASE WHEN type='expense' THEN 1 ELSE 0 END) AS expense_count
+        FROM transactions
+        WHERE 1=1
+    """
+    params: list = []
+    if date_from:
+        sql += " AND date >= ?"
+        params.append(date_from)
+    if date_to:
+        sql += " AND date <= ?"
+        params.append(date_to)
+
+    with get_conn() as conn:
+        row = conn.execute(sql, params).fetchone()
+
+    income = float(row['income'] or 0)
+    expense = float(row['expense'] or 0)
+    return {
+        "income": income,
+        "expense": expense,
+        "balance": income - expense,
+        "count": int(row["count"] or 0),
+        "income_count": int(row["income_count"] or 0),
+        "expense_count": int(row["expense_count"] or 0),
+    }
+
+def summary_by_month(date_from: str | None = None,
+            date_to: str | None = None) -> list[dict]:
+    """
+    按月汇总，返回列表（按月份升序）：
+    [{"month": "2026-09", "income": .., "expense": .., "balance": .., "count": ..,}, ...]
+    """
+    sql = """
+        SELECT 
+            substr(date, 1, 7) AS month,
+            COALESCE(SUM(CASE WHEN type='income' THEN amount END), 0) AS income,
+            COALESCE(SUM(CASE WHEN type='expense' THEN amount END), 0) AS expense,
+            COUNT(*) as count 
+        FROM transactions
+        WHERE 1=1
+    """
+    params: list = []
+    if date_from:
+        sql += " AND date >= ?"
+        params.append(date_from)
+    if date_to:
+        sql += " AND date <= ?"
+        params.append(date_to)
+    sql += " GROUP BY month ORDER BY month"
+
+    with get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+
+    return [
+        {
+            "month": r["month"],
+            "income": float(r["income"] or 0),
+            "expense": float(r["expense"] or 0),
+            "balance": float((r["income"] or 0) - (r["expense"] or 0)),
+            "count": int(r["count"] or 0),
+        }
+        for r in rows
+    ]
+
+def summary_by_category(type_: str = "expense",
+                        date_from: str | None = None,
+                        date_to: str | None = None) -> list[dict]:
+    """
+    按分类汇总，默认统计支出。
+    返回列表（按金额降序）：
+    [{"category": "餐饮", "total": 123.4, "count": 5, "percent": 32.1}, ...]
+    percent 是占该 type_ 总额的比例（0-100，保留1位小数）
+    """
+    sql = """
+        SELECT category,
+               SUM(amount) AS total,
+               COUNT(*) AS count
+        FROM transactions
+        WHERE type=?
+    """
+    params: list = [type_]
+    if date_from:
+            sql += " AND date >= ?"
+            params.append(date_from)
+    if date_to:
+        sql += " AND date <= ?"
+        params.append(date_to)
+    sql += " GROUP BY category ORDER BY total DESC"
+
+    with get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+
+    grand = sum(float(r["total"] or 0) for r in rows) or 1.0
+    return [
+        {
+            "category": r["category"],
+            "total": float(r["total"] or 0),
+            "count": float(r["count"] or 0),
+            "percent": round(float(r["total"] or 0) / grand * 100, 1),
+        }
+        for r in rows
+    ]
+
 def update_transaction(tid: int, **fields) -> bool:
     """
     按 id 更新交易。支持的字段：date, type, category, amout, note。
