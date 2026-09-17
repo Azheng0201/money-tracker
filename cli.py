@@ -1,9 +1,10 @@
 """命令行界面：增删改查交易"""
 import sys
 import argparse
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 import db
+import analytics, charts
 
 # ---------- 输入辅助 ----------
 def ask(prompt: str, default: str | None = None) -> str:
@@ -61,6 +62,20 @@ def ask_int(prompt: str) -> str:
             return int(raw)
         except ValueError:
             print("⚠️ 请输入整数。")
+
+def _inclusive_to_exclusive(d: str | None) -> str | None:
+    """CLI 用户输入的日期是含当天的， 转成内部排他式边界。"""
+    if not d:
+        return None
+    return (date.fromisoformat(d) + timedelta(days=1)).isoformat()
+
+def _date_arg(s: str) -> str:
+    """argparse 的类型校验：非法日期直接报错。"""
+    try:
+        date.fromisoformat(s)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"日期格式应为 YYYY-MM-DD, 收到 {s!r}")
+    return s
 
 # ---------- 显示 ----------
 def print_rows(rows) -> None:
@@ -303,8 +318,13 @@ def cmd_list(args) -> None:
             print(f"⚠️ {e}")
             return
     else:
-        rows = db.query(date_from=args.date_from, date_to=args.date_to,
-                        type_=args.type, category=args.category, keyword=args.keyword)
+        rows = db.query(
+            date_from=args.date_from, 
+            date_to=_inclusive_to_exclusive(args.date_to),
+            type_=args.type, 
+            category=args.category, 
+            keyword=args.keyword,
+            )
     print(f"\n  共 {len(rows)} 条：")
     print_rows(rows)
 
@@ -326,7 +346,8 @@ def cmd_categories(args) -> None:
     print("\n📂 已用分类：", "、".join(cats) if cats else " (无) ")
 
 def cmd_summary(args) -> None:
-    date_from, date_to = args.date_from, args.date_to
+    date_from = args.date_from
+    date_to = _inclusive_to_exclusive(args.date_to)
     title = "全部汇总"
     if args.month:
         try:
@@ -344,6 +365,46 @@ def cmd_summary(args) -> None:
     else:
         print_summary(db.summary(date_from, date_to), title)
 
+def cmd_chart(args) -> None:
+    date_from = args.date_from
+    date_to = _inclusive_to_exclusive(args.date_to)
+    if args.month:
+        try:
+            date_from, date_to = _month_range(args.month)
+        except ValueError as e:
+            print(f"⚠️ {e}")
+            return
+    df = analytics.load_df(
+        date_from=date_from,
+        date_to=date_to)
+    if df.empty:
+        print(" ⚠️ 没有可绘制的数据。")
+        return
+
+    generated: list = []
+    if args.kind in ("all", "bar"):
+        try:
+            generated.append(charts.bar_monthly(df))
+        except ValueError as e:
+            print(f"⚠️ 柱状图: {e}")
+    if args.kind in ("all", "line"):
+        try:
+            generated.append(charts.line_balance(df))
+        except ValueError as e:
+            print(f"⚠️ 折线图: {e}")
+    if args.kind in ("all", "bar"):
+        try:
+            generated.append(charts.pie_categories(df, "expense"))
+        except ValueError as e:
+            print(f"⚠️ 饼图: {e}")
+
+    if not generated:
+        print("⚠️ 未生成任何图表。")
+        return
+    print("✅ 已生成：")
+    for p in generated:
+        print(f"  {p}")
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Money Tracker 命令行工具")
     subparsers = parser.add_subparsers(dest="cmd")
@@ -358,8 +419,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     # 查看交易
     parser_list = subparsers.add_parser("list", help="列出/筛选交易")
-    parser_list.add_argument("--from", dest="date_from", help="起始日期 YYYY-MM-DD")
-    parser_list.add_argument("--to", dest="date_to", help="结束日期 YYYY-MM-DD")
+    parser_list.add_argument("--from", dest="date_from", type=_date_arg, 
+                             help="起始日期 YYYY-MM-DD")
+    parser_list.add_argument("--to", dest="date_to", type=_date_arg, 
+                             help="结束日期 YYYY-MM-DD")
     parser_list.add_argument("--type", choices=["income", "expense"])
     parser_list.add_argument("--category")
     parser_list.add_argument("--keyword", help="备注/分类模糊搜索")
@@ -377,11 +440,21 @@ def build_parser() -> argparse.ArgumentParser:
     # 汇总统计
     parser_summary = subparsers.add_parser("summary", help="汇总统计")
     parser_summary.add_argument("--month", help="只统计某月 YYYY-MM")
-    parser_summary.add_argument("--from", dest="date_from", help="起始日期 YYYY-MM-DD")
-    parser_summary.add_argument("--to", dest="date_to", help="结束日期 YYYY-MM-DD")
+    parser_summary.add_argument("--from", dest="date_from", type=_date_arg,
+                                help="起始日期 YYYY-MM-DD")
+    parser_summary.add_argument("--to", dest="date_to", type=_date_arg,
+                                help="结束日期 YYYY-MM-DD")
     parser_summary.add_argument("--by", choices=["category", "month"], help="按分类或按月展开")
     parser_summary.add_argument("--type", choices=["income", "expense"], default="expense",
                                 help="配合 --by category 使用， 默认 expense")
+
+    # 生成图表
+    parser_chart = subparsers.add_parser("chart", help="生成图表 PNG")
+    parser_chart.add_argument("--kind", choices=["all", "bar", "pie", "line"],
+                              default="all", help="生成哪张图，默认all")
+    parser_chart.add_argument("--from", dest="date_from", type=_date_arg)
+    parser_chart.add_argument("--to", dest="date_to", type=_date_arg)
+    parser_chart.add_argument("--month", help="只画某月 YYYY-MM")
 
     return parser
 
@@ -405,6 +478,7 @@ def main(argv: list[str] | None = None) -> None:
         "delete":     cmd_delete,
         "categories": cmd_categories,
         "summary":    cmd_summary,
+        "chart":      cmd_chart,
     }
 
     handler = handlers.get(args.cmd)

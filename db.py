@@ -56,7 +56,7 @@ def query(date_from: str | None = None,
           keyword: str | None = None) -> list[sqlite3.Row]:
     """
     通用筛选，参数都是可选，条件之间是 AND 关系。
-    - date_from / date_to 格式: YYYY-MM-DD，闭区间
+    - date_from / date_to 格式: YYYY-MM-DD，半开区间[date_from, date_to)
     - type_: "income" / "expense"
     - category: 精确匹配
     - keyword: 备注或分类的模糊匹配
@@ -68,7 +68,7 @@ def query(date_from: str | None = None,
         sql += " AND date >= ?"
         params.append(date_from)
     if date_to:
-        sql += " AND date <= ?"
+        sql += " AND date < ?"
         params.append(date_to)
     if type_:
         sql += " AND type = ?"
@@ -130,7 +130,8 @@ def list_categories(type_: str | None = None) -> list[str]:
 def summary(date_from: str | None = None,
             date_to: str | None = None) -> dict:
     """
-    返回一个区间内的汇总
+    返回一个区间内的汇总。
+    - date_from / date_to 格式: YYYY-MM-DD，半开区间[date_from, date_to)
     {
         "income": 收入合计,
         "expense": 支出合计,
@@ -156,7 +157,7 @@ def summary(date_from: str | None = None,
         sql += " AND date >= ?"
         params.append(date_from)
     if date_to:
-        sql += " AND date <= ?"
+        sql += " AND date < ?"
         params.append(date_to)
 
     with get_conn() as conn:
@@ -178,6 +179,7 @@ def summary_by_month(date_from: str | None = None,
     """
     按月汇总，返回列表（按月份升序）：
     [{"month": "2026-09", "income": .., "expense": .., "balance": .., "count": ..,}, ...]
+    - date_from / date_to 格式: YYYY-MM-DD，半开区间[date_from, date_to)
     """
     sql = """
         SELECT 
@@ -193,7 +195,7 @@ def summary_by_month(date_from: str | None = None,
         sql += " AND date >= ?"
         params.append(date_from)
     if date_to:
-        sql += " AND date <= ?"
+        sql += " AND date < ?"
         params.append(date_to)
     sql += " GROUP BY month ORDER BY month"
 
@@ -219,6 +221,7 @@ def summary_by_category(type_: str = "expense",
     返回列表（按金额降序）：
     [{"category": "餐饮", "total": 123.4, "count": 5, "percent": 32.1}, ...]
     percent 是占该 type_ 总额的比例（0-100，保留1位小数）
+    - date_from / date_to 格式: YYYY-MM-DD，半开区间[date_from, date_to)
     """
     sql = """
         SELECT category,
@@ -232,7 +235,7 @@ def summary_by_category(type_: str = "expense",
             sql += " AND date >= ?"
             params.append(date_from)
     if date_to:
-        sql += " AND date <= ?"
+        sql += " AND date < ?"
         params.append(date_to)
     sql += " GROUP BY category ORDER BY total DESC"
 

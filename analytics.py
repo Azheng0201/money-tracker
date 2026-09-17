@@ -10,6 +10,7 @@ def load_df(date_from: str | None = None,
     """
     读取交易到 DataFrame，已做类型转换。
     列：id, date(datetime64), type, category, amount(float), note, month, day
+    - date_from / date_to 格式: YYYY-MM-DD，半开区间[date_from, date_to)
     """
     sql = "SELECT * FROM transactions WHERE 1=1"
     params: list = []
@@ -17,7 +18,7 @@ def load_df(date_from: str | None = None,
         sql += " AND date >= ?"
         params.append(date_from)
     if date_to:
-        sql += " AND date <= ?"
+        sql += " AND date < ?"
         params.append(date_to)
     sql += " ORDER BY date"
 
