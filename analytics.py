@@ -2,6 +2,7 @@
 from datetime import datetime
 
 import pandas as pd
+import numpy as np
 
 import db
 
@@ -83,7 +84,7 @@ def monthly_df(df: pd.DataFrame) -> pd.DataFrame:
     result["balance"] = result["income"] - result["expense"]
     return result[["income", "expense", "balance", "count"]].sort_index()
 
-def mon_growth(df: pd.DataFrame, col: str = "expense") -> pd.DataFrame:
+def mom_growth(df: pd.DataFrame, col: str = "expense") -> pd.DataFrame:
     """
     环比：每月相比上个月的增幅。
     返回 DataFrame, 含 col, prev, diff, pct(百分比，保留 1 位)。
@@ -98,7 +99,7 @@ def mon_growth(df: pd.DataFrame, col: str = "expense") -> pd.DataFrame:
         "prev": m[col].shift(1),
     })
     out["diff"] = out[col] - out["prev"]
-    out["pct"] = (out["diff"] / out["prev"].replace(0, pd.NA)) * 100
+    out["pct"] = (out["diff"] / out["prev"].replace(0, np.nan)) * 100
     out["pct"] = out["pct"].round(1)
     return out
 
@@ -196,7 +197,7 @@ def _print_demo() -> None:
     print(monthly_df(df).to_string())
 
     print("\n  【支出环比】 ")
-    print(mon_growth(df, "expense").to_string())
+    print(mom_growth(df, "expense").to_string())
 
     print("\n  【Top 5 支出分类】 ")
     print(top_categories(df, "expense", 5).to_string(index=False))
@@ -207,4 +208,14 @@ def _print_demo() -> None:
     print(weekday_spending(df).to_string(index=False))
 
 if __name__ == "__main__":
-    _print_demo()
+    import display
+    df = load_df()
+    display.print_demo_report(
+        df=df,
+        summary=summary_df(df),
+        monthly=monthly_df(df),
+        mom=mom_growth(df, "expense"),
+        top=top_categories(df, "expense", 5),
+        daily=daily_avg(df),
+        weekday=weekday_spending(df)
+    )

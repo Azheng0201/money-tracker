@@ -5,6 +5,7 @@ from datetime import datetime, date, timedelta
 
 import db
 import analytics, charts
+import display
 
 # ---------- 输入辅助 ----------
 def ask(prompt: str, default: str | None = None) -> str:
@@ -78,49 +79,7 @@ def _date_arg(s: str) -> str:
     return s
 
 # ---------- 显示 ----------
-def print_rows(rows) -> None:
-    if not rows:
-        print("⚠️ 没有记录。")
-        return
-    print(f"  {'ID':>4} {'日期':<12} {'类型':<8} {'分类':<6} {'金额':>10} 备注")
-    print("  " + "-" * 56)
-    for r in rows:
-        sign = "+" if r["type"] == "income" else "-"
-        print(f"  {r['id']:>4} {r['date']:<12} {r['type']:<8} {r['category']:<6} {sign}￥{r['amount']:>8.2f} {r['note']}")
 
-def print_summary(s: dict, title: str = "") -> None:
-    if title:
-        print(f"\n 📊 {title}")
-    print(f"  收入：  +￥{s['income']:>10.2f}  ({s['income_count']} 笔)")
-    print(f"  支出：  -￥{s['expense']:>10.2f}  ({s['expense_count']} 笔)")
-    sign = "🟢" if s["balance"] >= 0 else "🔴"
-    print(f"  结余：  {sign} ￥{s['balance']:>10.2f}  共 {s['count']} 笔")
-
-def print_month_table(rows: list[dict]) -> None:
-    if not rows:
-        print("  （暂无数据）")
-        return
-    print(f"  {'月份':<9}{'收入':>12}{'支出':>12}{'结余':>12}{'笔数':>6}")
-    print("  " + "-" * 51)
-    for r in rows:
-        print(f"  {r['month']:<9}"
-              f"{r['income']:>12.2f}"
-              f"{r['expense']:>12.2f}"
-              f"{r['balance']:>12.2f}"
-              f"{r['count']:>6}")
-
-def print_category_table(rows: list[dict], type_: str) -> None:
-    label = "收入" if type_ == "income" else "支出"
-    if not rows:
-        print(f"  （暂无{label}数据）")
-        return
-    print(f"  {'分类':<10}{label + '金额':>12}{'占比':>8}{'笔数':>6}")
-    print("  " + "-" * 36)
-    for r in rows:
-        print(f"  {r['category']:<10}"
-            f"{r['total']:>12.2f}"
-            f"{r['percent']:>7.1f}"
-            f"{r['count']:>6}")
 
 # ---------- 各功能 ----------
 def action_add() -> None:
@@ -137,7 +96,7 @@ def action_add() -> None:
 def action_list() -> None:
     print("\n🗒️ 所有交易记录：")
     rows = db.list_all()
-    print_rows(rows)
+    display.print_rows(rows)
 
 def action_update() -> None:
     print("\n✏️ 更新交易")
@@ -147,7 +106,7 @@ def action_update() -> None:
         print(f"⚠️ 找不到 ID={tid} 的交易。")
         return
     print("当前记录：")
-    print_rows([row])
+    display.print_rows([row])
     print("  (直接回车 = 保持原值)")
 
     date = ask_date(f"  新日期 [{row['date']}]：", default=row["date"])
@@ -179,7 +138,7 @@ def action_delete() -> None:
     if not row:
         print(f"⚠️ 找不到 ID={tid} 的交易。")
         return
-    print_rows([row])
+    display.print_rows([row])
     confirm = input(f"⚠️ 确认删除 ID={tid} 吗？(y/N)：").strip().lower()
     if confirm != "y":
         print("↩️ 已取消删除。")
@@ -197,7 +156,7 @@ def action_summary() -> None:
     sub = input("  请选择（1-5）：").strip()
 
     if sub == "1":
-        print_summary(db.summary(), "全部汇总")
+        display.print_summary(db.summary(), "全部汇总")
     elif sub == "2":
         ym = input(" 月份（YYYY-MM，回车=本月）：").strip() or datetime.now().strftime("%Y-%m")
         try:
@@ -205,13 +164,13 @@ def action_summary() -> None:
         except ValueError as e:
             print(f"  ⚠️ {e}")
             return
-        print_summary(db.summary(df, dt), f"{ym} 汇总")
+        display.print_summary(db.summary(df, dt), f"{ym} 汇总")
     elif sub == "3":
-        print_month_table(db.summary_by_month())
+        display.print_month_table(db.summary_by_month())
     elif sub == "4":
-        print_category_table(db.summary_by_category("expense"), "expense")
+        display.print_category_table(db.summary_by_category("expense"), "expense")
     elif sub == "5":
-        print_category_table(db.summary_by_category("income"), "income")
+        display.print_category_table(db.summary_by_category("income"), "income")
     else:
         print("  ⚠️ 无效选项。")
 
@@ -253,7 +212,7 @@ def action_query() -> None:
 
     rows = db.query(date_from=date_from, date_to=date_to, type_=type_, category=category, keyword=keyword)
     print(f"\n  共 {len(rows)} 条：")
-    print_rows(rows)
+    display.print_rows(rows)
 
 def action_month() -> None:
     ym = input("\n  月份 (YYYY-MM, 回车=本月)：").strip()
@@ -265,7 +224,7 @@ def action_month() -> None:
         print(f"⚠️ {e}")
         return
     print(f"\n 📅 {ym} 共 {len(rows)} 条：")
-    print_rows(rows)
+    display.print_rows(rows)
 
 def action_categories() -> None:
     cats = db.list_categories()
@@ -326,7 +285,7 @@ def cmd_list(args) -> None:
             keyword=args.keyword,
             )
     print(f"\n  共 {len(rows)} 条：")
-    print_rows(rows)
+    display.print_rows(rows)
 
 def cmd_delete(args) -> None:
     row = db.get_by_id(args.id)
@@ -358,12 +317,12 @@ def cmd_summary(args) -> None:
         title = f"{args.month} 汇总"
 
     if args.by == "month":
-        print_month_table(db.summary_by_month(date_from, date_to))
+        display.print_month_table(db.summary_by_month(date_from, date_to))
     elif args.by == "category":
-        print_category_table(
+        display.print_category_table(
             db.summary_by_category(args.type, date_from, date_to), args.type)
     else:
-        print_summary(db.summary(date_from, date_to), title)
+        display.print_summary(db.summary(date_from, date_to), title)
 
 def cmd_chart(args) -> None:
     date_from = args.date_from
