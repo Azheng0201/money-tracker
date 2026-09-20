@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}添加交易 · MoneyTracker{% endblock %}
+
+{% block content %}
+    <h2>添加交易</h2>
+    
+    <form method="post" action="{{ url_for('add') }}" class="tx-form">
+        <div class="form-row">
+            <label for="date">日期</label>
+            <input type="date" name="date" id="date" value="{{ form.date }}" required>
+        </div>
+
+        <div class="form-row">
+            <label for="type">类型</label>
+            <select name="type" id="type">
+                <option value="expense" 
+                    {{ "selected" if form.type == "expense" else "" }}>支出</option>
+                <option value="income" 
+                    {{ "selected" if form.type == "income" else "" }}>收入</option>
+            </select>
+        </div>
+
+        <div class="form-row">
+            <label for="category">分类</label>
+            <input type="text" name="category" id="category"
+                   value="{{ form.category }}"
+                   placeholder="如 餐饮 / 交通 / 工资" required>
+        </div>
+
+        <div class="form-row">
+            <label for="amount">金额</label>
+            <input type="number" name="amount" id="amount"
+                   value="{{ form.amount }}"
+                   step="0.01" min="0" required>
+        </div>
+
+        <div class="form-row">
+            <label for="note">备注</label>
+            <input type="text" name="note" id="note"
+                   value="{{ form.note }}" placeholder="可空">
+        </div>
+
+        <div class="form-actions">
+            <button type="submit">保存</button>
+            <a href="{{ url_for('transactions') }}" class="cancel">取消</a>
+        </div>
+    </form>
+{% endblock %}

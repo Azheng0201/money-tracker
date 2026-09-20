@@ -3,9 +3,10 @@
 {% block title %}首页 · MoneyTracker{% endblock %}
 
 {% block content %}
-    <h2>欢迎回来 MoneyTracker</h2>
+    <h2>欢迎使用 MoneyTracker</h2>
     <p>这是一个个人记账与消费分析系统。</p>
     <ul>
         <li><a href="{{ url_for('transactions') }}">查看所有交易</a></li>
+        <li><a href="{{ url_for('add') }}">添加交易</a></li>
     </ul>
 {% endblock %}
