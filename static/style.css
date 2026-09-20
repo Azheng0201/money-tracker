@@ -160,3 +160,37 @@ footer {
 }
 
 .form-actions .cancel:hover { color: #222; }
+
+/* 列表里的操作按钮 */
+.actions {
+    white-space: nowrap;
+}
+
+.inline-form { display: inline; }
+
+.btn-edit,
+.btn-delete {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    font-family: inherit;
+}
+
+.btn-edit {
+    background: #e3f2fd;
+    color: #1565c0;
+}
+
+.btn-edit:hover { background: #bbdefb; }
+
+.btn-delete {
+    background: #ffebee;
+    color: #c62828;
+    margin-left: 4px;
+}
+
+.btn-delete:hover { background: #ffcdd2; }

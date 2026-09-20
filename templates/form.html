@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}添加交易 · MoneyTracker{% endblock %}
+{% block title %}{{ form_title }} · MoneyTracker{% endblock %}
 
 {% block content %}
-    <h2>添加交易</h2>
+    <h2>{{ form_title }}</h2>
     
-    <form method="post" action="{{ url_for('add') }}" class="tx-form">
+    <form method="post" action="{{ form_action }}" class="tx-form">
         <div class="form-row">
             <label for="date">日期</label>
             <input type="date" name="date" id="date" value="{{ form.date }}" required>
@@ -31,7 +31,7 @@
         <div class="form-row">
             <label for="amount">金额</label>
             <input type="number" name="amount" id="amount"
-                   value="{{ form.amount }}"
+                   value="{{ form.get('amount_s', form.get('amount', '')) }}"
                    step="0.01" min="0" required>
         </div>
 
@@ -42,7 +42,7 @@
         </div>
 
         <div class="form-actions">
-            <button type="submit">保存</button>
+            <button type="submit">{{ submit_label }}</button>
             <a href="{{ url_for('transactions') }}" class="cancel">取消</a>
         </div>
     </form>
