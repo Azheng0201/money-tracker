@@ -1,11 +1,38 @@
 """Flask 网页版：交易列表、统计、图表。"""
 from flask import (Flask, render_template, request,
-                   redirect, url_for, flash)
+                   redirect, url_for, flash, jsonify)
 from datetime import datetime, date as _date
+from pathlib import Path
 
 import db
+import analytics
+import charts
 
 app = Flask(__name__)
+CHART_DIR = Path(__file__).parent / "static" / "charts"
+CHART_FILES = ["monthly_bar.png", "pie_expense.png", "balance_line.png"]
+
+def _ensure_charts() -> None:
+    """首次访问或数据缺失时生成图表。已存在就跳过"""
+    if all((CHART_DIR / n).exists() for n in CHART_FILES):
+        return
+    df = analytics.load_df()
+    if df.empty:
+        return
+    try:
+        charts.generate_all(df)
+    except Exception as e:
+        # 生成失败不影响页面其他部分渲染
+        app.logger.warning("生成图表失败：%s", e)
+
+def _chart_version() -> str:
+    """用最新的图表文件 mtime 作为版本号，防浏览器缓存旧图。"""
+    if not CHART_DIR.exists():
+        return "0"
+    files = [f for f in CHART_DIR.glob("*.png")]
+    if not files:
+        return "0"
+    return str(int(max(f.stat().st_mtime for f in files)))
 
 @app.template_filter("money")
 def money_filter(v):
@@ -58,9 +85,16 @@ def _validate_tx_form(form) -> tuple[list[str], dict]:
 
 @app.route("/")
 def index():
+    _ensure_charts()
     s = db.summary()
     recent = db.recent_transactions(5)
-    return render_template("dashboard.html", summary=s, recent=recent)
+    return render_template(
+        "dashboard.html", 
+        summary=s, 
+        recent=recent,
+        chart_version=_chart_version(),
+        has_charts=all((CHART_DIR / n).exists() for n in CHART_FILES),
+        )
 
 @app.route("/transactions")
 def transactions():
@@ -150,6 +184,30 @@ def delete(tid):
     else:
         flash(f"⚠️ 没有 id = {tid} 的记录", "error")
     return redirect(url_for("transactions"))
+
+@app.route("/charts/refresh", methods=["POST"])
+def refresh_charts():
+    df = analytics.load_df()
+    if df.empty:
+        flash("⚠️ 没有数据可以绘图", "error")
+        return redirect(url_for("index"))
+    try:
+        paths = charts.generate_all(df)
+    except Exception as e:
+        flash(f"❌ 图表生成失败： {e}", "error")
+        return redirect(url_for("index"))
+    flash(f"✅ 已生成 {len(paths)} 张图表", "success")
+    return redirect(url_for("index"))
+
+@app.route("/api/monthly")
+def api_monthly():
+    df = analytics.load_df()
+    m = analytics.monthly_df(df)
+    return jsonify({
+        "months": list(m.index),
+        "income": m["income"].tolist(),
+        "expense": m["expense"].tolist(),
+    })
 
 if __name__ == "__main__":
     db.init_db()

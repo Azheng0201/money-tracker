@@ -34,6 +34,66 @@
         </div>
     </section>
 
+    <section class="charts">
+        <div class="charts-header">
+            <h3>统计图表</h3>
+            <form method="post" action="{{ url_for('refresh_charts') }}">
+                <button type="submit" class="btn-secondary">🔄️ 刷新图表</button>
+            </form>
+        </div>
+
+        <!-- 新增：Chart.js 交互式图 -->
+        <div class="chart-item chart-item-wide">
+            <h4>月度收支(交互式)</h4>
+            <div class="chart-canvas-wrap">
+                <canvas id="chartMonthly"></canvas>
+                <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+                <script>
+                    fetch("{{ url_for('api_monthly') }}")
+                        .then(r => r.json())
+                        .then(d => {
+                        new Chart(document.getElementById("chartMonthly"), {
+                            type: "bar",
+                            data: {
+                                labels: d.months,
+                                datasets: [
+                                    { label: "收入", data: d.income, backgroundColor: "#4CAF50" },
+                                    { label: "支出", data: d.expense, backgroundColor: "#F44336" },
+                                ],
+                            },
+                            options: { responsive: true, maintainAspectRatio: false },
+                        });
+                        });
+                </script>
+            </div>
+        </div>
+
+        {% if has_charts %}
+            <div class="chart-grid">
+                <div class="chart-item">
+                    <h4>月度收支</h4>
+                    <img src="{{ url_for('static', filename='charts/monthly_bar.png') }}?v={{ chart_version }}"
+                         alt="月度收支柱状图">
+                </div>
+                <div class="chart-item">
+                    <h4>结余趋势</h4>
+                    <img src="{{ url_for('static', filename='charts/balance_line.png') }}?v={{ chart_version }}"
+                         alt="结余趋势折线图">
+                </div>
+                <div class="chart-item chart-item-wide">
+                    <h4>支出分类占比</h4>
+                    <img src="{{ url_for('static', filename='charts/pie_expense.png') }}?v={{ chart_version }}"
+                         alt="支出分类饼图">
+                </div>
+            </div>
+        {% else %}
+            <div class="empty">
+                还没有数据生成图表。先<a href="{{ url_for('add') }}">添加交易</a>，
+                再点右上角"刷新图表"。
+            </div>
+        {% endif %}
+    </section>
+
     <section class="recent">
         <h3>最近交易</h3>
         {% if recent %}
