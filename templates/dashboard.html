@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}仪表盘 · MoneyTracker{% endblock %}
+
+{% block content %}
+    <div class="dash-header">
+        <h2>仪表盘</h2>
+        <a href="{{ url_for('add') }}" class="btn-primary">➕ 添加交易</a>
+    </div>
+
+    <section class="cards">
+        <div class="card card-income">
+            <div class="card-label">总收入</div>
+            <div class="card-value">{{ summary.income | money }}</div>
+            <div class="card-sub">{{ summary.income_count }} 笔</div>
+        </div>
+
+        <div class="card card-expense">
+            <div class="card-label">总支出</div>
+            <div class="card-value">{{ summary.expense | money }}</div>
+            <div class="card-sub">{{ summary.expense_count }} 笔</div>
+        </div>
+
+        <div class="card {{ 'card-positive' if summary.balance >= 0 else 'card-negative' }}">
+            <div class="card-label">结余</div>
+            <div class="card-value">{{ summary.balance | money }}</div>
+            <div class="card-sub">共 {{ summary.count }} 笔记录</div>
+        </div>
+
+        <div class="card card-neutral">
+            <div class="card-label">总笔数</div>
+            <div class="card-value">{{ summary.count }}</div>
+            <div class="card-sub">全部交易</div>
+        </div>
+    </section>
+
+    <section class="recent">
+        <h3>最近交易</h3>
+        {% if recent %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>日期</th>
+                        <th>类型</th>
+                        <th>分类</th>
+                        <th>金额</th>
+                        <th>备注</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in recent %}
+                        <tr>
+                            <td>{{ r["date"] }}</td>
+                            <td>{{ "收入" if r["type"] == "income" else "支出" }}</td>
+                            <td>{{ r["category"] }}</td>
+                            <td class="{{ r['type'] }}">
+                                {{ "+" if r["type"] == "income" else "-" }}
+                                {{ r["amount"] | money }}
+                            </td>
+                            <td>{{ r["note"] }}</td>
+                            <td><a href="{{ url_for('edit', tid=r['id']) }}"
+                                   class="btn-edit">编辑</a></td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <p class="more">
+                <a href="{{ url_for('transactions') }}">查看全部→</a>
+            </p>
+        {% else %}
+            <div class="empty">
+                还没有任何记录。试试
+                <a href="{{ url_for('add') }}">添加第一条</a>,
+                或者用<code>python .\cli.py add</code>。
+            </div>
+        {% endif %}
+    </section>
+{% endblock %}

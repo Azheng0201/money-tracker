@@ -6,6 +6,12 @@ from datetime import datetime, date as _date
 import db
 
 app = Flask(__name__)
+
+@app.template_filter("money")
+def money_filter(v):
+    """￥格式，保留 2 位。"""
+    return f"￥{float(v):,.2f}"
+
 app.secret_key = "dev-secret-change-me"  # flash 需要，上线必须换成随机值
 
 def _validate_tx_form(form) -> tuple[list[str], dict]:
@@ -52,7 +58,9 @@ def _validate_tx_form(form) -> tuple[list[str], dict]:
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    s = db.summary()
+    recent = db.recent_transactions(5)
+    return render_template("dashboard.html", summary=s, recent=recent)
 
 @app.route("/transactions")
 def transactions():

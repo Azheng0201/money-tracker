@@ -43,6 +43,16 @@ def list_all() -> list[sqlite3.Row]:
         cursor = conn.execute("SELECT * FROM transactions ORDER BY date DESC, id DESC")
         return cursor.fetchall()
 
+def recent_transactions(limit: int = 5) -> list[sqlite3.Row]:
+    """最近 N 条交易，按日期倒序。limit 必须为正整数。"""
+    if limit <= 0:
+        return []
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT * FROM transactions ORDER BY date DESC, id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+
 def get_by_id(tid: int) -> sqlite3.Row | None:
     """根据 id 获取交易记录，找不到返回 None。"""
     with get_conn() as conn:
