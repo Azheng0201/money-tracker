@@ -20,3 +20,18 @@ def temp_db(tmp_path, monkeypatch):
     monkeypatch.setattr(db_module, "DB_PATH", test_path)
     db_module.init_db()
     yield db_module
+
+@pytest.fixture
+def client(temp_db, monkeypatch):
+    """
+    每个测试拿到一个 Flask 测试客户端，指向临时数据库。
+    同时禁用 _ensure_charts, 避免每次请求都跑 matplotlib。
+    """
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "_ensure_charts", lambda: None)
+    app_module.app.config["TESTING"] = True
+    app_module.app.config["WTF_CSRF_ENABLED"] = False
+
+    with app_module.app.test_client() as c:
+        yield c

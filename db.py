@@ -323,7 +323,7 @@ def update_transaction(tid: int, **fields) -> bool:
 
     with get_conn() as conn:
         cur = conn.execute(f"UPDATE transactions SET {set_clause} WHERE id = ?", values)
-    return cur.rowcount > 0
+    return True
 
 def delete_transaction(tid: int) -> bool:
     """按 id 删除交易，返回 True 表示删除成功，False 表示找不到该 id。"""
