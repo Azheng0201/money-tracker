@@ -96,10 +96,81 @@ def index():
         has_charts=all((CHART_DIR / n).exists() for n in CHART_FILES),
         )
 
+PER_PAGE = 20
+
+def _month_range(ym: str) -> tuple[str, str]:
+    """'YYYY-MM' → （本月1号，下月1号）。"""
+    if len(ym) != 7 or ym[4] != "-":
+        raise ValueError("月份格式应为 YYYY-MM")
+    y, m = ym.split("-")
+    if not (y.isdigit() and m.isdigit() and 1 <= int(m) <= 12):
+        raise ValueError("月份格式应为 YYYY-MM")
+    y, m = int(y), int(m)
+    start = f"{y:04d}-{m:02d}-01"
+    end = f"{y+1:04d}-01-01" if m == 12 else f"{y:04d}-{m+1:02d}-01"
+    return start, end
+
 @app.route("/transactions")
 def transactions():
-    rows = db.list_all()
-    return render_template("transactions.html", rows=rows)
+    # 1. 读查询参数
+    month    = request.args.get("month",    "").strip() or None
+    type_    = request.args.get("type",     "").strip() or None
+    category = request.args.get("category", "").strip() or None
+    keyword  = request.args.get("keyword",  "").strip() or None
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+
+    # 2. 月份 → 日期区间
+    date_from = date_to = None
+    if month:
+        try:
+            date_from, date_to = _month_range(month)
+        except ValueError:
+            flash(f"⚠️ 月份格式错误：{month}", "error")
+            month = None
+
+    # 3. 查询
+    rows, total = db.query_paged(
+        page=page, per_page=PER_PAGE,
+        date_from=date_from, date_to=date_to,
+        type_=type_, category=category, keyword=keyword,
+    )
+
+    # 4. 边界保护：page 超出范围就跳转最后一页
+    total_pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
+    if page > total_pages:
+        page = total_pages
+        rows, total = db.query_paged(
+            page=page, per_page=PER_PAGE,
+            date_from=date_from, date_to=date_to,
+            type_=type_, category=category, keyword=keyword,
+        )    
+
+    # 5. 保留筛选条件的 URL 生成器 （给模板翻页用）
+    def url_with(**overrides):
+        args = {k: v for k, v in request.args.items()}
+        for k, v in overrides.items():
+            if v is None or v == "":
+                args.pop(k, None)
+            else:
+                args[k] = v
+        return url_for("transactions", **args)
+    
+    return render_template(
+        "transactions.html", 
+        rows=rows,
+        total=total,
+        page=page,
+        per_page=PER_PAGE,
+        total_pages=total_pages,
+        filters={"month": month, "type": type_,
+                 "category": category, "keyword": keyword},
+        months = db.list_months(),
+        categories=db.list_categories(),
+        url_with=url_with,
+    )
 
 @app.route("/add", methods=["GET", "POST"])
 def add():

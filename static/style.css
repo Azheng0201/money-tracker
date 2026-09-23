@@ -350,3 +350,80 @@ footer {
     height: 320px;
     width: 100%;
 }
+
+/* ---- 筛选表单 ---- */
+.filter-form {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    background: white;
+    padding: 14px 16px;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+    margin-bottom: 16px;
+}
+
+.filter-form select,
+.filter-form input {
+    padding: 7px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+    font-family: inherit;
+}
+
+.filter-form input[type="text"] { min-width: 180px; }
+.filter-form button {
+    background: #2c3e50;
+    color: white;
+    border: none;
+    padding: 7px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-family: inherit;
+}
+
+.filter-form button:hover { background: #1a252f; }
+
+.filter-form a {
+    color: #888;
+    text-decoration: none;
+    font-size: 13px;
+}
+
+.filter-form a:hover { color: #c62828; }
+
+/* 分页 */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    margin-top: 16px;
+    padding: 12px;
+}
+
+.pagination a {
+    color: #1565c0;
+    text-decoration: none;
+    padding: 6px;
+    border-radius: 4px;
+    background: white;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+    font-size: 14px;
+}
+
+.pagination a:hover { background: #e3f2fd; }
+
+.pagination .disabled {
+    color: #ccc;
+    padding: 6px 14px;
+    font-size: 14px;
+}
+
+.pagination .page-info {
+    color: #666;
+    font-size: 13px;
+}

@@ -37,11 +37,43 @@ def add_transaction(date: str, type_: str, category: str, amount: float, note: s
         )
         return cursor.lastrowid
 
+def _build_where(date_from=None, date_to=None, type_=None,
+                 category=None, keyword=None) -> tuple[str, list]:
+    """构造 WHERE 子句和参数列表。date_to 是排他边界。"""
+    sql = " WHERE 1=1"
+    params: list = []
+    if date_from:
+        sql += " AND date >= ?"
+        params.append(date_from)
+    if date_to:
+        sql += " AND date < ?"
+        params.append(date_to)
+    if type_:
+        sql += " AND type =  ?"
+        params.append(type_)
+    if category:
+        sql += " AND category = ?"
+        params.append(category)
+    if keyword:
+        sql += " AND (note LIKE ? OR category LIKE ?)"
+        like = f"%{keyword}%"
+        params.extend([like, like])
+    return sql, params
+
 def list_all() -> list[sqlite3.Row]:
     """返回所有交易记录，按日期降序排列。"""
     with get_conn() as conn:
         cursor = conn.execute("SELECT * FROM transactions ORDER BY date DESC, id DESC")
         return cursor.fetchall()
+
+def list_months() -> list[str]:
+    """返回有数据的月份， 倒序。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT substr(date, 1, 7) as m "
+            "FROM transactions ORDER BY m DESC"
+        ).fetchall()
+    return [r["m"] for r in rows]
 
 def recent_transactions(limit: int = 5) -> list[sqlite3.Row]:
     """最近 N 条交易，按日期倒序。limit 必须为正整数。"""
@@ -59,11 +91,8 @@ def get_by_id(tid: int) -> sqlite3.Row | None:
         cursor = conn.execute("SELECT * FROM transactions WHERE id = ?", (tid,))
         return cursor.fetchone()
 
-def query(date_from: str | None = None, 
-          date_to: str | None = None,
-          type_: str | None = None, 
-          category: str | None = None,
-          keyword: str | None = None) -> list[sqlite3.Row]:
+def query(date_from=None, date_to=None, type_=None, 
+          category=None, keyword=None) -> list[sqlite3.Row]:
     """
     通用筛选，参数都是可选，条件之间是 AND 关系。
     - date_from / date_to 格式: YYYY-MM-DD，半开区间[date_from, date_to)
@@ -72,30 +101,38 @@ def query(date_from: str | None = None,
     - keyword: 备注或分类的模糊匹配
     按日期倒序返回。
     """
-    sql = "SELECT * FROM transactions WHERE 1=1"
-    params: list = []
-    if date_from:
-        sql += " AND date >= ?"
-        params.append(date_from)
-    if date_to:
-        sql += " AND date < ?"
-        params.append(date_to)
-    if type_:
-        sql += " AND type = ?"
-        params.append(type_)
-    if category:
-        sql += " AND category = ?"
-        params.append(category)
-    if keyword:
-        sql += " AND (category LIKE ? OR note LIKE ?)"
-        like = f"%{keyword}%"
-        params.extend([like, like])
-
-    sql += " ORDER BY date DESC, id DESC"
-
+    where, params = _build_where(date_from, date_to, type_, category, keyword)
+    sql = ("SELECT * FROM transactions" + where +
+           " ORDER BY date DESC, id DESC")
+    
     with get_conn() as conn:
         cursor = conn.execute(sql, params)
         return cursor.fetchall()
+
+def query_paged(page: int = 1, per_page: int = 20,
+                date_from=None, date_to=None, type_=None,
+                category=None, keyword=None) -> tuple[list[sqlite3.Row], int]:
+    """
+    分页查询。返回（rows, total_count）。
+    page 从 1 开始。conditions 同 query()。
+    """
+    page = max(1, int(page))
+    per_page = max(1, int(per_page))
+    offset = (page - 1) * per_page
+
+    where, params = _build_where(date_from, date_to, type_, category, keyword)
+
+    with get_conn() as conn:
+        total = conn.execute(
+            f"SELECT COUNT(*) AS n FROM transactions{where}", params
+        ).fetchone()["n"]
+
+        rows = conn.execute(
+            f"SELECT * FROM transactions{where} "
+            f"ORDER BY date DESC, id DESC LIMIT ? OFFSET ?",
+            params + [per_page, offset],
+        ).fetchall()
+    return rows, int(total)
 
 def query_by_month(ym: str) -> list[sqlite3.Row]:
     """
