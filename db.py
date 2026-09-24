@@ -1,6 +1,8 @@
 import sqlite3
 from pathlib import Path
 
+from datetime import datetime as _dt
+
 DB_PATH = Path(__file__).parent / "data" / "finance.db"
 
 def get_conn() -> sqlite3.Connection:
@@ -27,6 +29,16 @@ def init_db() -> None:
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_date ON transactions(date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_type ON transactions(type)")
+
+        # users 表
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                username      TEXT    NOT NULL UNIQUE,
+                password_hash TEXT    NOT NULL,
+                created_at    TEXT    NOT NULL
+            )
+        """)
 
 def add_transaction(date: str, type_: str, category: str, amount: float, note: str = "") -> int:
     """添加一条交易记录，返回新记录的 id。"""
@@ -358,3 +370,31 @@ if __name__ == "__main__":
     ok = delete_transaction(3)
     print("  删除 id=3:", "成功" if ok else "失败")
     print("  剩余条数：", len(list_all()))
+
+def create_user(username: str, password_hash: str) -> int:
+    """
+    注册新用户。用户名重复会抛出 sqlite3.IntegrityError。
+    返回新用户 id。
+    """
+    now = _dt.now().isoformat(timespec="seconds")
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO users(username, password_hash, created_at) "
+            "VALUES (?, ?, ?)",
+            (username, password_hash, now)
+        )
+        return cur.lastrowid
+
+def get_user_by_username(username: str):
+    """按用户名查询用户，不存在则返回 None。"""
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT * FROM users WHERE username = ?", (username,)
+        ).fetchone()
+
+def get_user_by_id(user_id: int):
+    """按 id 查询用户，不存在则返回 None。"""
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT * FROM users WHERE id = ?", (user_id,)
+        ).fetchone()

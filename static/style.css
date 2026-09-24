@@ -427,3 +427,23 @@ footer {
     color: #666;
     font-size: 13px;
 }
+
+/* 顶栏用户信息 */
+.user-info {
+    color: #cfd8dc;
+    margin-left: 16px;
+    font-size: 14px;
+}
+
+.link-btn {
+    background: none;
+    border: none;
+    color: #cfd8dc;
+    cursor: pointer;
+    font-size: 14px;
+    font-family: inherit;
+    padding: 0;
+    margin-left: 12px;
+}
+
+.link-btn:hover { color: white; }

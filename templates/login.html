@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}登录 · MoneyTracker{% endblock %}
+
+{% block content %}
+    <h2>登录</h2>
+
+    <form method="post" class="tx-form" style="max-width: 360px;">
+        <div class="form-row">
+            <label for="username">用户名</label>
+            <input type="text" name="username" id="username"
+                   value="{{ form.username }}" required autofocus>
+        </div>
+        <div class="form-row">
+            <label for="password">密码</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <div class="form-actions">
+            <button type="submit">登录</button>
+            <a href="{{ url_for("register") }}" class="cancel">
+                没有账号？注册
+            </a>
+        </div>
+    </form>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}注册 · MoneyTracker{% endblock %}
+
+{% block content %}
+    <h2>注册</h2>
+    
+    <form method="post" class="tx-form" style="max-width: 360px;">
+        <div class="form-row">
+            <label for="username">用户名</label>
+            <input type="text" name="username" id="username"
+                   value="{{ form.username }}" required autofocus
+                   minlength="3">
+        </div>
+        <div class="form-row">
+            <label for="password">密码</label>
+            <input type="password" name="password" id="password"
+                   required minlength="6">
+        </div>
+        <div class="form-row">
+            <label for="confirm">确认密码</label>
+            <input type="password" name="confirm" id="confirm"
+                   required minlength="6">
+        </div>
+        <div class="form-actions">
+            <button type="submit">注册</button>
+            <a href="{{ url_for('login') }}" class="cancel">
+                已有账号？登录
+            </a>
+        </div>
+    </form>
+{% endblock %}

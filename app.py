@@ -1,6 +1,8 @@
 """Flask 网页版：交易列表、统计、图表。"""
-from flask import (Flask, render_template, request,
-                   redirect, url_for, flash, jsonify)
+from functools import wraps
+from flask import (Flask, render_template, request, redirect,
+                   url_for, flash, session, g, jsonify)
+from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, date as _date
 from pathlib import Path
 
@@ -9,6 +11,23 @@ import analytics
 import charts
 
 app = Flask(__name__)
+
+@app.before_request
+def load_logged_in_user():
+    """每次请求前把当前用户挂到 g.user 上，模板和视图都能直接用。"""
+    user_id = session.get("user_id")
+    g.user = db.get_user_by_id(user_id) if user_id else None
+
+def login_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if g.user is None:
+            flash("请先登录", "error")
+            # 把当前的 URL 记录下来，登录后跳回去
+            return redirect(url_for("login", next=request.path))
+        return view(*args, **kwargs)
+    return wrapped
+
 CHART_DIR = Path(__file__).parent / "static" / "charts"
 CHART_FILES = ["monthly_bar.png", "pie_expense.png", "balance_line.png"]
 
@@ -84,6 +103,7 @@ def _validate_tx_form(form) -> tuple[list[str], dict]:
     return errors, cleaned
 
 @app.route("/")
+@login_required
 def index():
     _ensure_charts()
     s = db.summary()
@@ -111,6 +131,7 @@ def _month_range(ym: str) -> tuple[str, str]:
     return start, end
 
 @app.route("/transactions")
+@login_required
 def transactions():
     # 1. 读查询参数
     month    = request.args.get("month",    "").strip() or None
@@ -172,7 +193,75 @@ def transactions():
         url_with=url_with,
     )
 
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if g.user:
+        return redirect(url_for("index"))
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        confirm  = request.form.get("confirm", "")
+
+        errors = []
+        if len(username) < 3:
+            errors.append("用户名至少 3 个字符")
+        if len(password) < 6:
+            errors.append("密码至少 6 位")
+        if password != confirm:
+            errors.append("两次密码不一致")
+        if db.get_user_by_username(username):
+            errors.append("用户名已被占用")
+
+        if errors:
+            for e in errors:
+                flash(e, "error")
+            return render_template("register.html",
+                                   form={"username": username})
+
+        uid = db.create_user(username, generate_password_hash(password))
+        session["user_id"] = uid
+        flash(f"✅ 注册成功，欢迎 {username}", "success")
+        return redirect(url_for("index"))
+    
+    return render_template("register.html", form={"username": ""})
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if g.user:
+        return redirect(url_for("index"))
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        user = db.get_user_by_username(username)
+
+        if not user or not check_password_hash(user["password_hash"], password):
+            flash("用户名或密码错误", "error")
+            return render_template("login.html",
+                                   form={"username": username})
+
+        session.clear()
+        session["user_id"] = user["id"]
+        flash(f"✅ 欢迎回来，{username}", "success")
+
+        # 登录成功后跳回原来想访问的页面
+        next_url = request.args.get("next") or url_for("index")
+        # 防止 open redirect: next 必须是站内相对路径
+        if not next_url.startswith("/") or next_url.startswith("//"):
+            next_url = url_for("index")
+        return redirect(next_url)
+
+    return render_template("login.html", form={"username": ""})
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    flash("👋 已退出登录", "success")
+    return redirect(url_for("login"))
+
 @app.route("/add", methods=["GET", "POST"])
+@login_required
 def add():
     if request.method == "POST":
         errors, c = _validate_tx_form(request.form)
@@ -201,6 +290,7 @@ def add():
     )
 
 @app.route("/edit/<int:tid>", methods=["GET", "POST"])
+@login_required
 def edit(tid):
     row = db.get_by_id(tid)
     if row is None:
@@ -248,6 +338,7 @@ def edit(tid):
     )
 
 @app.route("/delete/<int:tid>", methods=["POST"])
+@login_required
 def delete(tid):
     ok = db.delete_transaction(tid)
     if ok:
@@ -257,6 +348,7 @@ def delete(tid):
     return redirect(url_for("transactions"))
 
 @app.route("/charts/refresh", methods=["POST"])
+@login_required
 def refresh_charts():
     df = analytics.load_df()
     if df.empty:
@@ -271,6 +363,7 @@ def refresh_charts():
     return redirect(url_for("index"))
 
 @app.route("/api/monthly")
+@login_required
 def api_monthly():
     df = analytics.load_df()
     m = analytics.monthly_df(df)
