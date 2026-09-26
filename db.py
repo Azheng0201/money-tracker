@@ -27,9 +27,6 @@ def init_db() -> None:
             )
             """
         )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_date ON transactions(date)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_type ON transactions(type)")
-
         # users 表
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -39,21 +36,65 @@ def init_db() -> None:
                 created_at    TEXT    NOT NULL
             )
         """)
+        
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_date ON transactions(date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_type ON transactions(type)")
 
-def add_transaction(date: str, type_: str, category: str, amount: float, note: str = "") -> int:
+    _migrate_add_user_id()
+
+def _migrate_add_user_id() -> None:
+    """
+    给 transactions 表加 user_id 列。
+    已有数据归给 legacy 用户。
+    """
+    with get_conn() as conn:
+        cols = [r["name"] for r in 
+                conn.execute("PRAGMA table_info(transactions)").fetchall()]
+        if "user_id" in cols:
+            return  # 已经迁移过
+
+        print("[migration] transactions 表增加 user_id 列...")
+        conn.execute("ALTER TABLE transactions ADD COLUMN user_id INTEGER")
+
+        # 保证 legacy 用户存在
+        row = conn.execute(
+            "SELECT id FROM users WHERE username = 'legacy'").fetchone()
+        if row:
+            legacy_id = row["id"]
+        else:
+            cur = conn.execute(
+                "INSERT INTO users(username, password_hash, created_at) "
+                "VALUES (?, ?, ?)",
+                ("legacy", "!", _dt.now().isoformat(timespec="seconds")),
+            )
+            legacy_id = cur.lastrowid
+
+        n = conn.execute(
+            "UPDATE transactions SET user_id = ? WHERE user_id IS NULL",
+            (legacy_id,),
+        ).rowcount
+        print(f"[migration] 已把 {n} 条旧数据归给 legacy 用户 (id={legacy_id})")
+
+def migrate() -> None:
+    """运行所有需要的迁移。开放在 init_db 之后调用。"""
+    _migrate_add_user_id()
+
+def add_transaction(user_id: int, date: str, type_: str, category: str, 
+                    amount: float, note: str = "") -> int:
     """添加一条交易记录，返回新记录的 id。"""
     with get_conn() as conn:
         cursor = conn.execute(
-            "INSERT INTO transactions (date, type, category, amount, note) VALUES (?, ?, ?, ?, ?)",
-            (date, type_, category, float(amount), note)
+            "INSERT INTO transactions (user_id, date, type, category, amount, note) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, date, type_, category, float(amount), note)
         )
         return cursor.lastrowid
 
-def _build_where(date_from=None, date_to=None, type_=None,
+def _build_where(user_id, date_from=None, date_to=None, type_=None,
                  category=None, keyword=None) -> tuple[str, list]:
     """构造 WHERE 子句和参数列表。date_to 是排他边界。"""
-    sql = " WHERE 1=1"
-    params: list = []
+    sql = " WHERE user_id = ?"
+    params: list = [user_id]
     if date_from:
         sql += " AND date >= ?"
         params.append(date_from)
@@ -72,48 +113,43 @@ def _build_where(date_from=None, date_to=None, type_=None,
         params.extend([like, like])
     return sql, params
 
-def list_all() -> list[sqlite3.Row]:
+def list_all(user_id: int) -> list[sqlite3.Row]:
     """返回所有交易记录，按日期降序排列。"""
     with get_conn() as conn:
-        cursor = conn.execute("SELECT * FROM transactions ORDER BY date DESC, id DESC")
+        cursor = conn.execute("SELECT * FROM transactions WHERE user_id = ? " 
+                              "ORDER BY date DESC, id DESC", (user_id,))
         return cursor.fetchall()
 
-def list_months() -> list[str]:
+def list_months(user_id: int) -> list[str]:
     """返回有数据的月份， 倒序。"""
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT DISTINCT substr(date, 1, 7) as m "
-            "FROM transactions ORDER BY m DESC"
+            "FROM transactions WHERE user_id = ? ORDER BY m DESC", (user_id,),
         ).fetchall()
     return [r["m"] for r in rows]
 
-def recent_transactions(limit: int = 5) -> list[sqlite3.Row]:
+def recent_transactions(user_id: int, limit: int = 5) -> list[sqlite3.Row]:
     """最近 N 条交易，按日期倒序。limit 必须为正整数。"""
     if limit <= 0:
         return []
     with get_conn() as conn:
         return conn.execute(
-            "SELECT * FROM transactions ORDER BY date DESC, id DESC LIMIT ?",
-            (limit,),
+            "SELECT * FROM transactions WHERE user_id = ? "
+            "ORDER BY date DESC, id DESC LIMIT ?",
+            (user_id, limit),
         ).fetchall()
 
-def get_by_id(tid: int) -> sqlite3.Row | None:
+def get_by_id(user_id: int, tid: int) -> sqlite3.Row | None:
     """根据 id 获取交易记录，找不到返回 None。"""
     with get_conn() as conn:
-        cursor = conn.execute("SELECT * FROM transactions WHERE id = ?", (tid,))
+        cursor = conn.execute("SELECT * FROM transactions WHERE id = ? AND user_id = ?", 
+                              (tid, user_id),)
         return cursor.fetchone()
 
-def query(date_from=None, date_to=None, type_=None, 
-          category=None, keyword=None) -> list[sqlite3.Row]:
-    """
-    通用筛选，参数都是可选，条件之间是 AND 关系。
-    - date_from / date_to 格式: YYYY-MM-DD，半开区间[date_from, date_to)
-    - type_: "income" / "expense"
-    - category: 精确匹配
-    - keyword: 备注或分类的模糊匹配
-    按日期倒序返回。
-    """
-    where, params = _build_where(date_from, date_to, type_, category, keyword)
+def query(user_id, date_from=None, date_to=None, type_=None, 
+          category=None, keyword=None):
+    where, params = _build_where(user_id, date_from, date_to, type_, category, keyword)
     sql = ("SELECT * FROM transactions" + where +
            " ORDER BY date DESC, id DESC")
     
@@ -121,9 +157,8 @@ def query(date_from=None, date_to=None, type_=None,
         cursor = conn.execute(sql, params)
         return cursor.fetchall()
 
-def query_paged(page: int = 1, per_page: int = 20,
-                date_from=None, date_to=None, type_=None,
-                category=None, keyword=None) -> tuple[list[sqlite3.Row], int]:
+def query_paged(user_id, page=1, per_page=20, date_from=None, date_to=None, 
+                type_=None, category=None, keyword=None):
     """
     分页查询。返回（rows, total_count）。
     page 从 1 开始。conditions 同 query()。
@@ -132,7 +167,7 @@ def query_paged(page: int = 1, per_page: int = 20,
     per_page = max(1, int(per_page))
     offset = (page - 1) * per_page
 
-    where, params = _build_where(date_from, date_to, type_, category, keyword)
+    where, params = _build_where(user_id, date_from, date_to, type_, category, keyword)
 
     with get_conn() as conn:
         total = conn.execute(
@@ -146,7 +181,7 @@ def query_paged(page: int = 1, per_page: int = 20,
         ).fetchall()
     return rows, int(total)
 
-def query_by_month(ym: str) -> list[sqlite3.Row]:
+def query_by_month(user_id, ym: str) -> list[sqlite3.Row]:
     """
     按月份查询，ym 格式: YYYY-MM
     返回该月所有交易记录，用 [本月1号, 下月1号)的区间。
@@ -165,29 +200,28 @@ def query_by_month(ym: str) -> list[sqlite3.Row]:
     else:
         end = f"{y:04d}-{m+1:02d}-01"
 
-    sql = ("SELECT * FROM transactions WHERE date >= ? AND date < ? "
+    sql = ("SELECT * FROM transactions WHERE user_id = ? AND date >= ? AND date < ? "
            "ORDER BY date DESC, id DESC")
     with get_conn() as conn:
-        cursor = conn.execute(sql, (start, end))
+        cursor = conn.execute(sql, (user_id, start, end))
         return cursor.fetchall()
 
-def list_categories(type_: str | None = None) -> list[str]:
+def list_categories(user_id: int, type_: str | None = None) -> list[str]:
     """
     返回所有分类，按字母升序排列。
     如果 type_ 为 "income" 或 "expense"，则只返回该类型的分类。
     """
-    sql = "SELECT DISTINCT category FROM transactions"
-    params: list = []
+    sql = "SELECT DISTINCT category FROM transactions WHERE user_id = ?"
+    params: list = [user_id]
     if type_:
-        sql += " WHERE type = ?"
+        sql += " AND type = ?"
         params.append(type_)
     sql += " ORDER BY category"
 
     with get_conn() as conn:
         return [r["category"] for r in conn.execute(sql, params)]
 
-def summary(date_from: str | None = None,
-            date_to: str | None = None) -> dict:
+def summary(user_id: int, date_from=None, date_to=None) -> dict:
     """
     返回一个区间内的汇总。
     - date_from / date_to 格式: YYYY-MM-DD，半开区间[date_from, date_to)
@@ -201,24 +235,17 @@ def summary(date_from: str | None = None,
     }
     没有匹配记录时各项为0
     """
-    sql = """
+    where, params = _build_where(user_id, date_from, date_to)
+    sql = f"""
         SELECT 
             COALESCE(SUM(CASE WHEN type='income' THEN amount END), 0) AS income,
             COALESCE(SUM(CASE WHEN type='expense' THEN amount END), 0) AS expense,
             COUNT(*) as count,
             SUM(CASE WHEN type='income' THEN 1 ELSE 0 END) AS income_count,
             SUM(CASE WHEN type='expense' THEN 1 ELSE 0 END) AS expense_count
-        FROM transactions
-        WHERE 1=1
+        FROM transactions{where}
     """
-    params: list = []
-    if date_from:
-        sql += " AND date >= ?"
-        params.append(date_from)
-    if date_to:
-        sql += " AND date < ?"
-        params.append(date_to)
-
+    
     with get_conn() as conn:
         row = conn.execute(sql, params).fetchone()
 
@@ -233,29 +260,23 @@ def summary(date_from: str | None = None,
         "expense_count": int(row["expense_count"] or 0),
     }
 
-def summary_by_month(date_from: str | None = None,
+def summary_by_month(user_id: int, date_from: str | None = None,
             date_to: str | None = None) -> list[dict]:
     """
     按月汇总，返回列表（按月份升序）：
     [{"month": "2026-09", "income": .., "expense": .., "balance": .., "count": ..,}, ...]
     - date_from / date_to 格式: YYYY-MM-DD，半开区间[date_from, date_to)
     """
-    sql = """
+    where, params = _build_where(user_id, date_from, date_to)
+    sql = f"""
         SELECT 
             substr(date, 1, 7) AS month,
             COALESCE(SUM(CASE WHEN type='income' THEN amount END), 0) AS income,
             COALESCE(SUM(CASE WHEN type='expense' THEN amount END), 0) AS expense,
             COUNT(*) as count 
-        FROM transactions
-        WHERE 1=1
+        FROM transactions{where}
     """
-    params: list = []
-    if date_from:
-        sql += " AND date >= ?"
-        params.append(date_from)
-    if date_to:
-        sql += " AND date < ?"
-        params.append(date_to)
+    
     sql += " GROUP BY month ORDER BY month"
 
     with get_conn() as conn:
@@ -272,7 +293,7 @@ def summary_by_month(date_from: str | None = None,
         for r in rows
     ]
 
-def summary_by_category(type_: str = "expense",
+def summary_by_category(user_id: int, type_: str | None = None,
                         date_from: str | None = None,
                         date_to: str | None = None) -> list[dict]:
     """
@@ -282,20 +303,13 @@ def summary_by_category(type_: str = "expense",
     percent 是占该 type_ 总额的比例（0-100，保留1位小数）
     - date_from / date_to 格式: YYYY-MM-DD，半开区间[date_from, date_to)
     """
-    sql = """
+    where, params = _build_where(user_id, date_from, date_to, type_)
+    sql = f"""
         SELECT category,
                SUM(amount) AS total,
                COUNT(*) AS count
-        FROM transactions
-        WHERE type=?
+        FROM transactions{where}
     """
-    params: list = [type_]
-    if date_from:
-            sql += " AND date >= ?"
-            params.append(date_from)
-    if date_to:
-        sql += " AND date < ?"
-        params.append(date_to)
     sql += " GROUP BY category ORDER BY total DESC"
 
     with get_conn() as conn:
@@ -312,7 +326,7 @@ def summary_by_category(type_: str = "expense",
         for r in rows
     ]
 
-def update_transaction(tid: int, **fields) -> bool:
+def update_transaction(user_id: int, tid: int, **fields) -> bool:
     """
     按 id 更新交易。支持的字段：date, type, category, amout, note。
     返回 True 表示更新成功，False 表示找不到该 id 或没有字段可更新。
@@ -322,7 +336,7 @@ def update_transaction(tid: int, **fields) -> bool:
 
     if not updates:
         return False
-    if not get_by_id(tid):
+    if not get_by_id(user_id, tid):
         return False
 
     # amount 强制转 float，防止上层传递 str
@@ -331,16 +345,18 @@ def update_transaction(tid: int, **fields) -> bool:
 
     # 构建更新语句
     set_clause = ", ".join(f"{k} = ?" for k in updates)
-    values = list(updates.values()) + [tid]
+    values = list(updates.values()) + [tid, user_id]
 
     with get_conn() as conn:
-        cur = conn.execute(f"UPDATE transactions SET {set_clause} WHERE id = ?", values)
+        conn.execute(f"UPDATE transactions SET {set_clause} "
+                     f"WHERE id = ? AND user_id = ?", values,)
     return True
 
-def delete_transaction(tid: int) -> bool:
+def delete_transaction(user_id: int, tid: int) -> bool:
     """按 id 删除交易，返回 True 表示删除成功，False 表示找不到该 id。"""
     with get_conn() as conn:
-        cur = conn.execute("DELETE FROM transactions WHERE id = ?", (tid,))
+        cur = conn.execute("DELETE FROM transactions WHERE id = ? AND user_id = ?", 
+                           (tid, user_id))
         return cur.rowcount > 0
 
 # ---- 冒烟测试：直接运行本文件时执行 ----

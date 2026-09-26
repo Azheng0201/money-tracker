@@ -33,22 +33,27 @@ CHART_FILES = ["monthly_bar.png", "pie_expense.png", "balance_line.png"]
 
 def _ensure_charts() -> None:
     """首次访问或数据缺失时生成图表。已存在就跳过"""
-    if all((CHART_DIR / n).exists() for n in CHART_FILES):
+    prefix = f"u{g.user['id']}_"
+    names = [prefix + n for n in ("monthly_bar.png", 
+                                  "pie_expense.png", 
+                                  "balance_line.png")]
+    if all((CHART_DIR / n).exists() for n in names):
         return
-    df = analytics.load_df()
+    df = analytics.load_df(g.user["id"])
     if df.empty:
         return
     try:
-        charts.generate_all(df)
+        charts.generate_all(df, prefix=prefix)
     except Exception as e:
         # 生成失败不影响页面其他部分渲染
         app.logger.warning("生成图表失败：%s", e)
 
 def _chart_version() -> str:
     """用最新的图表文件 mtime 作为版本号，防浏览器缓存旧图。"""
+    prefix = f"u{g.user['id']}_"
     if not CHART_DIR.exists():
         return "0"
-    files = [f for f in CHART_DIR.glob("*.png")]
+    files = list(CHART_DIR.glob(f"{prefix}*.png"))
     if not files:
         return "0"
     return str(int(max(f.stat().st_mtime for f in files)))
@@ -106,8 +111,8 @@ def _validate_tx_form(form) -> tuple[list[str], dict]:
 @login_required
 def index():
     _ensure_charts()
-    s = db.summary()
-    recent = db.recent_transactions(5)
+    s = db.summary(g.user["id"])
+    recent = db.recent_transactions(g.user["id"], 5)
     return render_template(
         "dashboard.html", 
         summary=s, 
@@ -153,7 +158,7 @@ def transactions():
             month = None
 
     # 3. 查询
-    rows, total = db.query_paged(
+    rows, total = db.query_paged(g.user["id"],
         page=page, per_page=PER_PAGE,
         date_from=date_from, date_to=date_to,
         type_=type_, category=category, keyword=keyword,
@@ -163,7 +168,7 @@ def transactions():
     total_pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
     if page > total_pages:
         page = total_pages
-        rows, total = db.query_paged(
+        rows, total = db.query_paged(g.user["id"],
             page=page, per_page=PER_PAGE,
             date_from=date_from, date_to=date_to,
             type_=type_, category=category, keyword=keyword,
@@ -188,8 +193,8 @@ def transactions():
         total_pages=total_pages,
         filters={"month": month, "type": type_,
                  "category": category, "keyword": keyword},
-        months = db.list_months(),
-        categories=db.list_categories(),
+        months = db.list_months(g.user["id"]),
+        categories=db.list_categories(g.user["id"]),
         url_with=url_with,
     )
 
@@ -276,7 +281,7 @@ def add():
                 submit_label="保存",
             )
         
-        new_id = db.add_transaction(c["date"], c["type"], c["category"], c["amount"], c["note"])
+        new_id = db.add_transaction(g.user["id"], c["date"], c["type"], c["category"], c["amount"], c["note"])
         flash(f"✅ 已添加交易，id = {new_id}", "success")
         return redirect(url_for("transactions"))
 
@@ -292,7 +297,7 @@ def add():
 @app.route("/edit/<int:tid>", methods=["GET", "POST"])
 @login_required
 def edit(tid):
-    row = db.get_by_id(tid)
+    row = db.get_by_id(g.user["id"], tid)
     if row is None:
         flash(f"⚠️ 没有 id = {tid} 的记录", "error")
         return redirect(url_for("transactions"))
@@ -311,7 +316,7 @@ def edit(tid):
                 submit_label="保存修改",
             )
 
-        ok = db.update_transaction(
+        ok = db.update_transaction(g.user["id"],
             tid, date=c["date"], type=c["type"], category=c["category"],
             amount=c["amount"], note=c["note"]
         )
@@ -340,7 +345,7 @@ def edit(tid):
 @app.route("/delete/<int:tid>", methods=["POST"])
 @login_required
 def delete(tid):
-    ok = db.delete_transaction(tid)
+    ok = db.delete_transaction(g.user["id"], tid)
     if ok:
         flash(f"🗑️ 已删除 id = {tid}", "success")
     else:
@@ -350,12 +355,13 @@ def delete(tid):
 @app.route("/charts/refresh", methods=["POST"])
 @login_required
 def refresh_charts():
-    df = analytics.load_df()
+    df = analytics.load_df(g.user["id"])
     if df.empty:
         flash("⚠️ 没有数据可以绘图", "error")
         return redirect(url_for("index"))
+    prefix = f"u{g.user['id']}_"
     try:
-        paths = charts.generate_all(df)
+        paths = charts.generate_all(df, prefix=prefix)
     except Exception as e:
         flash(f"❌ 图表生成失败： {e}", "error")
         return redirect(url_for("index"))

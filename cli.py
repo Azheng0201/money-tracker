@@ -1,5 +1,6 @@
 """命令行界面：增删改查交易"""
 import sys
+import os
 import argparse
 from datetime import datetime, date, timedelta
 
@@ -78,8 +79,35 @@ def _date_arg(s: str) -> str:
         raise argparse.ArgumentTypeError(f"日期格式应为 YYYY-MM-DD, 收到 {s!r}")
     return s
 
-# ---------- 显示 ----------
+def _current_user_id() -> int:
+    """
+    从环境变量 MT_USER 取用户名；不设则取第一个用户。
+    没有用户时提示先去网页注册。
+    """
+    username = os.environ.get("MT_USER", "").strip()
 
+    if username:
+        u = db.get_user_by_username(username)
+        if not u:
+            print(f"⚠️ 用户 '{username}' 不存在。")
+            print("  请先到网页 /register 注册，或用 MT_USER=<其他用户名>。")
+            sys.exit(1)
+        return u["id"]
+
+    # 没设环境变量：取第一个用户
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, username FROM users ORDER BY id LIMIT 1"
+        ).fetchone()
+    if not row:
+        print("⚠️ 还没有任何用户。")
+        print("  请先运行 python app.py 并到 /register 注册一个账号。")
+        sys.exit(1)
+
+    print(f"(未设置 MT_USER, 使用第一个用户：{row['username']}) ")
+    return row["id"]
+
+_USER_ID: int = 0
 
 # ---------- 各功能 ----------
 def action_add() -> None:
@@ -90,18 +118,18 @@ def action_add() -> None:
     category = ask("分类（如餐饮/交通/工资）：")
     amount = ask_float("金额：")
     note = input("备注（可选）：").strip()
-    new_id = db.add_transaction(date, type_, category, amount, note)
+    new_id = db.add_transaction(_USER_ID, date, type_, category, amount, note)
     print(f"✅ 添加成功，ID={new_id}。")
 
 def action_list() -> None:
     print("\n🗒️ 所有交易记录：")
-    rows = db.list_all()
+    rows = db.list_all(_USER_ID)
     display.print_rows(rows)
 
 def action_update() -> None:
     print("\n✏️ 更新交易")
     tid = ask_int("请输入要更新的交易 ID：")
-    row = db.get_by_id(tid)
+    row = db.get_by_id(_USER_ID, tid)
     if not row:
         print(f"⚠️ 找不到 ID={tid} 的交易。")
         return
@@ -114,7 +142,7 @@ def action_update() -> None:
     category = ask(f"  新分类 [{row['category']}]：", default=row["category"])
     amount = ask_float(f"  新金额 [{row['amount']}]：", default=row["amount"])
     note = ask(f"  新备注 [{row['note']}]：", default=row["note"])
-    ok = db.update_transaction(tid, date=date, type=type_, category=category, amount=amount, note=note)
+    ok = db.update_transaction(_USER_ID, tid, date=date, type=type_, category=category, amount=amount, note=note)
     if ok:
         print("✅ 更新成功。")
     else:
@@ -134,7 +162,7 @@ def _ask_type_optional(prompt: str, current: str) -> str:
 def action_delete() -> None:
     print("\n🗑️ 删除交易")
     tid = ask_int("请输入要删除的交易 ID：")
-    row = db.get_by_id(tid)
+    row = db.get_by_id(_USER_ID, tid)
     if not row:
         print(f"⚠️ 找不到 ID={tid} 的交易。")
         return
@@ -143,7 +171,7 @@ def action_delete() -> None:
     if confirm != "y":
         print("↩️ 已取消删除。")
         return
-    ok = db.delete_transaction(tid)
+    ok = db.delete_transaction(_USER_ID, tid)
     print("✅ 删除成功。" if ok else "⚠️ 删除失败。")
 
 def action_summary() -> None:
@@ -156,7 +184,7 @@ def action_summary() -> None:
     sub = input("  请选择（1-5）：").strip()
 
     if sub == "1":
-        display.print_summary(db.summary(), "全部汇总")
+        display.print_summary(db.summary(_USER_ID), "全部汇总")
     elif sub == "2":
         ym = input(" 月份（YYYY-MM，回车=本月）：").strip() or datetime.now().strftime("%Y-%m")
         try:
@@ -164,13 +192,13 @@ def action_summary() -> None:
         except ValueError as e:
             print(f"  ⚠️ {e}")
             return
-        display.print_summary(db.summary(df, dt), f"{ym} 汇总")
+        display.print_summary(db.summary(_USER_ID, df, dt), f"{ym} 汇总")
     elif sub == "3":
-        display.print_month_table(db.summary_by_month())
+        display.print_month_table(db.summary_by_month(_USER_ID))
     elif sub == "4":
-        display.print_category_table(db.summary_by_category("expense"), "expense")
+        display.print_category_table(db.summary_by_category(_USER_ID, "expense"), "expense")
     elif sub == "5":
-        display.print_category_table(db.summary_by_category("income"), "income")
+        display.print_category_table(db.summary_by_category(_USER_ID, "income"), "income")
     else:
         print("  ⚠️ 无效选项。")
 
@@ -210,7 +238,7 @@ def action_query() -> None:
     category = input("  分类（精确匹配）：").strip() or None
     keyword = input("  关键字（模糊匹配备注/分类）：").strip() or None
 
-    rows = db.query(date_from=date_from, date_to=date_to, type_=type_, category=category, keyword=keyword)
+    rows = db.query(_USER_ID, date_from=date_from, date_to=date_to, type_=type_, category=category, keyword=keyword)
     print(f"\n  共 {len(rows)} 条：")
     display.print_rows(rows)
 
@@ -227,7 +255,7 @@ def action_month() -> None:
     display.print_rows(rows)
 
 def action_categories() -> None:
-    cats = db.list_categories()
+    cats = db.list_categories(_USER_ID)
     print("\n📂 已用分类：", "、".join(cats) if cats else " (无) ")
 
 ACTIONS = {
@@ -266,7 +294,7 @@ def cmd_add(args) -> None:
         print("⚠️ 参数不全，进入交互添加模式。")
         action_add()
         return
-    new_id = db.add_transaction(args.date, args.type, args.category, args.amount, args.note or "")
+    new_id = db.add_transaction(_USER_ID, args.date, args.type, args.category, args.amount, args.note or "")
     print(f"✅ 添加成功，ID={new_id}。")
 
 def cmd_list(args) -> None:
@@ -277,7 +305,7 @@ def cmd_list(args) -> None:
             print(f"⚠️ {e}")
             return
     else:
-        rows = db.query(
+        rows = db.query(_USER_ID,
             date_from=args.date_from, 
             date_to=_inclusive_to_exclusive(args.date_to),
             type_=args.type, 
@@ -288,7 +316,7 @@ def cmd_list(args) -> None:
     display.print_rows(rows)
 
 def cmd_delete(args) -> None:
-    row = db.get_by_id(args.id)
+    row = db.get_by_id(_USER_ID, args.id)
     if not row:
         print(f"⚠️ 找不到 ID={args.id} 的交易。")
         return
@@ -297,11 +325,11 @@ def cmd_delete(args) -> None:
         if confirm != "y":
             print("↩️ 已取消删除。")
             return
-    db.delete_transaction(args.id)
+    db.delete_transaction(_USER_ID, args.id)
     print("✅ 已删除。")
 
 def cmd_categories(args) -> None:
-    cats = db.list_categories(type_=args.type)
+    cats = db.list_categories(_USER_ID, type_=args.type)
     print("\n📂 已用分类：", "、".join(cats) if cats else " (无) ")
 
 def cmd_summary(args) -> None:
@@ -317,12 +345,12 @@ def cmd_summary(args) -> None:
         title = f"{args.month} 汇总"
 
     if args.by == "month":
-        display.print_month_table(db.summary_by_month(date_from, date_to))
+        display.print_month_table(db.summary_by_month(_USER_ID, date_from, date_to))
     elif args.by == "category":
         display.print_category_table(
-            db.summary_by_category(args.type, date_from, date_to), args.type)
+            db.summary_by_category(_USER_ID, args.type, date_from, date_to), args.type)
     else:
-        display.print_summary(db.summary(date_from, date_to), title)
+        display.print_summary(db.summary(_USER_ID, date_from, date_to), title)
 
 def cmd_chart(args) -> None:
     date_from = args.date_from
@@ -418,8 +446,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 def main(argv: list[str] | None = None) -> None:
+    global _USER_ID
     db.init_db()
-
+    _USER_ID = _current_user_id()
     argv = sys.argv[1:] if argv is None else argv
 
     # 无参数进入交互菜单

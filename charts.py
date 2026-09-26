@@ -119,23 +119,22 @@ def line_balance(df:pd.DataFrame,
 
 # ---------- 一键生成 ----------
 def generate_all(df: pd.DataFrame,
-                 date_from: str | None = None,
-                 date_to: str | None = None) -> list[Path]:
+                 prefix: str = "") -> list:
     """
     生成所有图表。传入的 df 一般来自 analytics.load_df(from, to)。
     返回生成的路径列表。
     """
-    paths: list[Path] = []
+    paths = []
     try:
-        paths.append(bar_monthly(df))
+        paths.append(bar_monthly(df, CHART_DIR / f"{prefix}monthly_bar.png"))
     except ValueError as e:
         print(f"  ⚠️ 跳过柱状图：{e}")
     try:
-        paths.append(line_balance(df))
+        paths.append(line_balance(df, CHART_DIR / f"{prefix}balance_line.png"))
     except ValueError as e:
         print(f"  ⚠️ 跳过折线图：{e}")
     try:
-        paths.append(pie_categories(df, "expense"))
+        paths.append(pie_categories(df, "expense", path= CHART_DIR / f"{prefix}pie_expense.png"))
     except ValueError as e:
         print(f"  ⚠️ 跳过饼图：{e}")
     return paths

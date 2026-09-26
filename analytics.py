@@ -1,20 +1,21 @@
 """ pandas 分析层： 从 SQLite 读数据，做 SQL 不方便做的查询。"""
 from datetime import datetime
+from flask import g
 
 import pandas as pd
 import numpy as np
 
 import db
 
-def load_df(date_from: str | None = None,
+def load_df(user_id: int, date_from: str | None = None,
             date_to: str | None = None) -> pd.DataFrame:
     """
     读取交易到 DataFrame，已做类型转换。
     列：id, date(datetime64), type, category, amount(float), note, month, day
     - date_from / date_to 格式: YYYY-MM-DD，半开区间[date_from, date_to)
     """
-    sql = "SELECT * FROM transactions WHERE 1=1"
-    params: list = []
+    sql = "SELECT * FROM transactions WHERE user_id=?"
+    params: list = [user_id]
     if date_from:
         sql += " AND date >= ?"
         params.append(date_from)
@@ -178,7 +179,7 @@ def weekday_spending(df: pd.DataFrame, type_: str = "expense") -> pd.DataFrame:
 
 def _print_demo() -> None:
     """python analytics.py 时打印一份演示报表。"""
-    df = load_df()
+    df = load_df(g.user["id"])
     if df.empty:
         print(" （暂无数据） ")
         return
@@ -209,7 +210,7 @@ def _print_demo() -> None:
 
 if __name__ == "__main__":
     import display
-    df = load_df()
+    df = load_df(g.user["id"])
     display.print_demo_report(
         df=df,
         summary=summary_df(df),
