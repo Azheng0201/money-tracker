@@ -1,22 +1,26 @@
 """Flask 网页版：交易列表、统计、图表。"""
+
+from datetime import date as _date
+from datetime import datetime
 from functools import wraps
-from flask import (Flask, render_template, request, redirect,
-                   url_for, flash, session, g, jsonify)
-from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, date as _date
 from pathlib import Path
 
-import db
+from flask import Flask, flash, g, jsonify, redirect, render_template, request, session, url_for
+from werkzeug.security import check_password_hash, generate_password_hash
+
 import analytics
 import charts
+import db
 
 app = Flask(__name__)
+
 
 @app.before_request
 def load_logged_in_user():
     """每次请求前把当前用户挂到 g.user 上，模板和视图都能直接用。"""
     user_id = session.get("user_id")
     g.user = db.get_user_by_id(user_id) if user_id else None
+
 
 def login_required(view):
     @wraps(view)
@@ -26,17 +30,18 @@ def login_required(view):
             # 把当前的 URL 记录下来，登录后跳回去
             return redirect(url_for("login", next=request.path))
         return view(*args, **kwargs)
+
     return wrapped
+
 
 CHART_DIR = Path(__file__).parent / "static" / "charts"
 CHART_FILES = ["monthly_bar.png", "pie_expense.png", "balance_line.png"]
 
+
 def _ensure_charts() -> None:
     """首次访问或数据缺失时生成图表。已存在就跳过"""
     prefix = f"u{g.user['id']}_"
-    names = [prefix + n for n in ("monthly_bar.png", 
-                                  "pie_expense.png", 
-                                  "balance_line.png")]
+    names = [prefix + n for n in ("monthly_bar.png", "pie_expense.png", "balance_line.png")]
     if all((CHART_DIR / n).exists() for n in names):
         return
     df = analytics.load_df(g.user["id"])
@@ -48,6 +53,7 @@ def _ensure_charts() -> None:
         # 生成失败不影响页面其他部分渲染
         app.logger.warning("生成图表失败：%s", e)
 
+
 def _chart_version() -> str:
     """用最新的图表文件 mtime 作为版本号，防浏览器缓存旧图。"""
     prefix = f"u{g.user['id']}_"
@@ -58,12 +64,15 @@ def _chart_version() -> str:
         return "0"
     return str(int(max(f.stat().st_mtime for f in files)))
 
+
 @app.template_filter("money")
 def money_filter(v):
     """￥格式，保留 2 位。"""
     return f"￥{float(v):,.2f}"
 
+
 app.secret_key = "dev-secret-change-me"  # flash 需要，上线必须换成随机值
+
 
 def _validate_tx_form(form) -> tuple[list[str], dict]:
     """
@@ -71,11 +80,11 @@ def _validate_tx_form(form) -> tuple[list[str], dict]:
     cleaned 里的 amount 是 float (校验通过时) 或 None (非法时) ;
     同时保留 amount_s 原字符串供回填。
     """
-    date_s   = form.get("date", "").strip()
-    type_    = form.get("type", "").strip()
+    date_s = form.get("date", "").strip()
+    type_ = form.get("type", "").strip()
     category = form.get("category", "").strip()
     amount_s = form.get("amount", "").strip()
-    note     = form.get("note", "").strip()
+    note = form.get("note", "").strip()
 
     errors: list[str] = []
 
@@ -102,10 +111,15 @@ def _validate_tx_form(form) -> tuple[list[str], dict]:
         errors.append("金额必须是数字")
 
     cleaned = {
-        "date": date_s, "type": type_, "category": category,
-        "amount": amount, "amount_s": amount_s, "note": note,
+        "date": date_s,
+        "type": type_,
+        "category": category,
+        "amount": amount,
+        "amount_s": amount_s,
+        "note": note,
     }
     return errors, cleaned
+
 
 @app.route("/")
 @login_required
@@ -114,14 +128,16 @@ def index():
     s = db.summary(g.user["id"])
     recent = db.recent_transactions(g.user["id"], 5)
     return render_template(
-        "dashboard.html", 
-        summary=s, 
+        "dashboard.html",
+        summary=s,
         recent=recent,
         chart_version=_chart_version(),
         has_charts=all((CHART_DIR / n).exists() for n in CHART_FILES),
-        )
+    )
+
 
 PER_PAGE = 20
+
 
 def _month_range(ym: str) -> tuple[str, str]:
     """'YYYY-MM' → （本月1号，下月1号）。"""
@@ -132,17 +148,18 @@ def _month_range(ym: str) -> tuple[str, str]:
         raise ValueError("月份格式应为 YYYY-MM")
     y, m = int(y), int(m)
     start = f"{y:04d}-{m:02d}-01"
-    end = f"{y+1:04d}-01-01" if m == 12 else f"{y:04d}-{m+1:02d}-01"
+    end = f"{y + 1:04d}-01-01" if m == 12 else f"{y:04d}-{m + 1:02d}-01"
     return start, end
+
 
 @app.route("/transactions")
 @login_required
 def transactions():
     # 1. 读查询参数
-    month    = request.args.get("month",    "").strip() or None
-    type_    = request.args.get("type",     "").strip() or None
+    month = request.args.get("month", "").strip() or None
+    type_ = request.args.get("type", "").strip() or None
     category = request.args.get("category", "").strip() or None
-    keyword  = request.args.get("keyword",  "").strip() or None
+    keyword = request.args.get("keyword", "").strip() or None
     try:
         page = max(1, int(request.args.get("page", 1)))
     except ValueError:
@@ -158,21 +175,31 @@ def transactions():
             month = None
 
     # 3. 查询
-    rows, total = db.query_paged(g.user["id"],
-        page=page, per_page=PER_PAGE,
-        date_from=date_from, date_to=date_to,
-        type_=type_, category=category, keyword=keyword,
+    rows, total = db.query_paged(
+        g.user["id"],
+        page=page,
+        per_page=PER_PAGE,
+        date_from=date_from,
+        date_to=date_to,
+        type_=type_,
+        category=category,
+        keyword=keyword,
     )
 
     # 4. 边界保护：page 超出范围就跳转最后一页
     total_pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
     if page > total_pages:
         page = total_pages
-        rows, total = db.query_paged(g.user["id"],
-            page=page, per_page=PER_PAGE,
-            date_from=date_from, date_to=date_to,
-            type_=type_, category=category, keyword=keyword,
-        )    
+        rows, total = db.query_paged(
+            g.user["id"],
+            page=page,
+            per_page=PER_PAGE,
+            date_from=date_from,
+            date_to=date_to,
+            type_=type_,
+            category=category,
+            keyword=keyword,
+        )
 
     # 5. 保留筛选条件的 URL 生成器 （给模板翻页用）
     def url_with(**overrides):
@@ -183,20 +210,20 @@ def transactions():
             else:
                 args[k] = v
         return url_for("transactions", **args)
-    
+
     return render_template(
-        "transactions.html", 
+        "transactions.html",
         rows=rows,
         total=total,
         page=page,
         per_page=PER_PAGE,
         total_pages=total_pages,
-        filters={"month": month, "type": type_,
-                 "category": category, "keyword": keyword},
-        months = db.list_months(g.user["id"]),
+        filters={"month": month, "type": type_, "category": category, "keyword": keyword},
+        months=db.list_months(g.user["id"]),
         categories=db.list_categories(g.user["id"]),
         url_with=url_with,
     )
+
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -206,7 +233,7 @@ def register():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        confirm  = request.form.get("confirm", "")
+        confirm = request.form.get("confirm", "")
 
         errors = []
         if len(username) < 3:
@@ -221,15 +248,15 @@ def register():
         if errors:
             for e in errors:
                 flash(e, "error")
-            return render_template("register.html",
-                                   form={"username": username})
+            return render_template("register.html", form={"username": username})
 
         uid = db.create_user(username, generate_password_hash(password))
         session["user_id"] = uid
         flash(f"✅ 注册成功，欢迎 {username}", "success")
         return redirect(url_for("index"))
-    
+
     return render_template("register.html", form={"username": ""})
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -243,8 +270,7 @@ def login():
 
         if not user or not check_password_hash(user["password_hash"], password):
             flash("用户名或密码错误", "error")
-            return render_template("login.html",
-                                   form={"username": username})
+            return render_template("login.html", form={"username": username})
 
         session.clear()
         session["user_id"] = user["id"]
@@ -259,11 +285,13 @@ def login():
 
     return render_template("login.html", form={"username": ""})
 
+
 @app.route("/logout", methods=["POST"])
 def logout():
     session.clear()
     flash("👋 已退出登录", "success")
     return redirect(url_for("login"))
+
 
 @app.route("/add", methods=["GET", "POST"])
 @login_required
@@ -280,19 +308,27 @@ def add():
                 form_action=url_for("add"),
                 submit_label="保存",
             )
-        
-        new_id = db.add_transaction(g.user["id"], c["date"], c["type"], c["category"], c["amount"], c["note"])
+
+        new_id = db.add_transaction(
+            g.user["id"], c["date"], c["type"], c["category"], c["amount"], c["note"]
+        )
         flash(f"✅ 已添加交易，id = {new_id}", "success")
         return redirect(url_for("transactions"))
 
     return render_template(
         "form.html",
-        form={"date": _date.today().isoformat(),
-              "type": "expense", "category": "", "amount_s": "", "note": ""},
+        form={
+            "date": _date.today().isoformat(),
+            "type": "expense",
+            "category": "",
+            "amount_s": "",
+            "note": "",
+        },
         form_title="添加交易",
         form_action=url_for("add"),
         submit_label="保存",
     )
+
 
 @app.route("/edit/<int:tid>", methods=["GET", "POST"])
 @login_required
@@ -316,14 +352,19 @@ def edit(tid):
                 submit_label="保存修改",
             )
 
-        ok = db.update_transaction(g.user["id"],
-            tid, date=c["date"], type=c["type"], category=c["category"],
-            amount=c["amount"], note=c["note"]
+        ok = db.update_transaction(
+            g.user["id"],
+            tid,
+            date=c["date"],
+            type=c["type"],
+            category=c["category"],
+            amount=c["amount"],
+            note=c["note"],
         )
         if ok:
             flash(f"✅ 已更新 id = {tid}", "success")
         else:
-            flash(f"⚠️ 更新失败", "error")
+            flash("⚠️ 更新失败", "error")
         return redirect(url_for("transactions"))
 
     # GET：把 Row 转成 dict 再传入模板
@@ -342,6 +383,7 @@ def edit(tid):
         submit_label="保存修改",
     )
 
+
 @app.route("/delete/<int:tid>", methods=["POST"])
 @login_required
 def delete(tid):
@@ -351,6 +393,7 @@ def delete(tid):
     else:
         flash(f"⚠️ 没有 id = {tid} 的记录", "error")
     return redirect(url_for("transactions"))
+
 
 @app.route("/charts/refresh", methods=["POST"])
 @login_required
@@ -368,16 +411,20 @@ def refresh_charts():
     flash(f"✅ 已生成 {len(paths)} 张图表", "success")
     return redirect(url_for("index"))
 
+
 @app.route("/api/monthly")
 @login_required
 def api_monthly():
     df = analytics.load_df()
     m = analytics.monthly_df(df)
-    return jsonify({
-        "months": list(m.index),
-        "income": m["income"].tolist(),
-        "expense": m["expense"].tolist(),
-    })
+    return jsonify(
+        {
+            "months": list(m.index),
+            "income": m["income"].tolist(),
+            "expense": m["expense"].tolist(),
+        }
+    )
+
 
 if __name__ == "__main__":
     db.init_db()
