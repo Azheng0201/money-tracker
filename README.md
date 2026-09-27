@@ -98,6 +98,44 @@ python app.py
 pytest -v
 ```
 
+## 开发
+
+### 一键质量检查
+```powershell
+.\scripts\check.ps1
+```
+
+依次跑：ruff lint → ruff format 检查 → pytest + 覆盖率。
+
+### 代码风格
+
+项目使用 [ruff](https://docs.astral.sh/ruff/) 做 lint 和格式化：
+```bash
+ruff check .       # 检查
+ruff check . --fix # 自动修复能修的
+ruff format .      # 格式化
+```
+
+配置见 `pyproject.toml`。
+
+### 测试覆盖率
+```bash
+pytest --cov=. --cov-report=term-missing
+pytest --cov=. --cov-report=html  # 生成htmlcov/index.html
+```
+
+核心模块目标：
+- `db.py` ≥ 90%
+- `analytics.py` ≥ 90%
+- `app.py` ≥ 70%
+
+### 依赖更新
+
+```bash
+pip install -r requirements.txt
+pip freeze > requirements.txt  # 改完后锁版本
+```
+
 ## 版本记录
 
 - **v1.0** (Day 14) Web 完整：仪表盘、筛选分页、增删改、图表、pytest 全绿

@@ -1,5 +1,7 @@
 """db.py 的单元测试。"""
+
 import pytest
+
 
 # ---------- CRUD ----------
 def test_add_and_get(temp_db, test_user):
@@ -11,8 +13,10 @@ def test_add_and_get(temp_db, test_user):
     assert row["category"] == "工资"
     assert row["note"] == "9月"
 
+
 def test_get_nonexistent(temp_db, test_user):
     assert temp_db.get_by_id(test_user, 9999) is None
+
 
 def test_list_all_order_desc(temp_db, test_user):
     temp_db.add_transaction(test_user, "2026-09-10", "income", "工资", 8000)
@@ -20,6 +24,35 @@ def test_list_all_order_desc(temp_db, test_user):
     temp_db.add_transaction(test_user, "2026-09-12", "expense", "交通", 10)
     dates = [r["date"] for r in temp_db.list_all(test_user)]
     assert dates == ["2026-09-12", "2026-09-11", "2026-09-10"]
+
+
+def test_list_months_order_desc(temp_db, test_user):
+    temp_db.add_transaction(test_user, "2026-09-10", "income", "工资", 8000)
+    temp_db.add_transaction(test_user, "2026-10-11", "expense", "餐饮", 50)
+    temp_db.add_transaction(test_user, "2026-11-12", "expense", "交通", 10)
+    months = temp_db.list_months(test_user)
+    assert months == ["2026-11", "2026-10", "2026-09"]
+
+
+def test_recent_transactions_limit_le0(temp_db, test_user):
+    temp_db.add_transaction(test_user, "2026-09-10", "income", "工资", 8000)
+    temp_db.add_transaction(test_user, "2026-09-11", "expense", "餐饮", 50)
+    temp_db.add_transaction(test_user, "2026-09-12", "expense", "交通", 10)
+    limit0 = temp_db.recent_transactions(test_user, 0)
+    assert limit0 == []
+    limit_negative = temp_db.recent_transactions(test_user, -2)
+    assert limit_negative == []
+    rows = temp_db.recent_transactions(test_user)
+    assert len(rows) == 3
+
+
+def test_query_paged(temp_db, test_user):
+    for i in range(25):
+        temp_db.add_transaction(test_user, f"2026-09-{i:02d}", "expense", "餐饮", 10)
+    rows, total = temp_db.query_paged(test_user)
+    assert len(rows) == 20
+    assert total == 25
+
 
 def test_update_partial_fields(temp_db, test_user):
     tid = temp_db.add_transaction(test_user, "2026-09-10", "income", "工资", 8000, "原备注")
@@ -29,34 +62,43 @@ def test_update_partial_fields(temp_db, test_user):
     assert row["amount"] == 9000
     assert row["note"] == "原备注"
 
+
 def test_update_nonexistent(temp_db, test_user):
     assert temp_db.update_transaction(test_user, 9999, amount=1) is False
+
 
 def test_update_no_valid_fields(temp_db, test_user):
     tid = temp_db.add_transaction(test_user, "2026-09-10", "income", "工资", 8000)
     # 传了不认识的字段，全部被过滤掉
     assert temp_db.update_transaction(test_user, tid, whatever=1) is False
 
+
 def test_delete_existing(temp_db, test_user):
     tid = temp_db.add_transaction(test_user, "2026-09-10", "income", "工资", 8000)
     assert temp_db.delete_transaction(test_user, tid) is True
     assert temp_db.get_by_id(test_user, tid) is None
 
+
 def test_delete_nonexistent(temp_db, test_user):
     assert temp_db.delete_transaction(test_user, 9999) is False
+
 
 # ---------- 筛选 ----------
 def test_query_by_month(temp_db, test_user):
     temp_db.add_transaction(test_user, "2026-09-10", "income", "工资", 8000)
     temp_db.add_transaction(test_user, "2026-09-11", "expense", "餐饮", 50)
     temp_db.add_transaction(test_user, "2026-10-01", "expense", "餐饮", 30)
+    temp_db.add_transaction(test_user, "2026-12-01", "expense", "餐饮", 30)
     assert len(temp_db.query_by_month(test_user, "2026-09")) == 2
     assert len(temp_db.query_by_month(test_user, "2026-10")) == 1
+    assert len(temp_db.query_by_month(test_user, "2026-12")) == 1
+
 
 @pytest.mark.parametrize("bad", ["2026-13", "abc", "2026/09", "202609"])
 def test_query_by_month_invalid(temp_db, bad, test_user):
     with pytest.raises(ValueError):
         temp_db.query_by_month(test_user, bad)
+
 
 def test_query_half_open_interval(temp_db, test_user):
     """[from, to) 语义：含 from，不含 to。"""
@@ -67,6 +109,7 @@ def test_query_half_open_interval(temp_db, test_user):
     assert len(rows) == 1
     assert rows[0]["date"] == "2026-09-11"
 
+
 def test_query_by_type(temp_db, test_user):
     temp_db.add_transaction(test_user, "2026-09-10", "income", "工资", 8000)
     temp_db.add_transaction(test_user, "2026-09-11", "expense", "餐饮", 50)
@@ -74,10 +117,12 @@ def test_query_by_type(temp_db, test_user):
     assert len(temp_db.query(test_user, type_="expense")) == 2
     assert len(temp_db.query(test_user, type_="income")) == 1
 
+
 def test_query_by_category(temp_db, test_user):
     temp_db.add_transaction(test_user, "2026-09-10", "expense", "餐饮", 50)
     temp_db.add_transaction(test_user, "2026-09-11", "expense", "交通", 10)
     assert len(temp_db.query(test_user, category="餐饮")) == 1
+
 
 def test_query_by_keyword(temp_db, test_user):
     temp_db.add_transaction(test_user, "2026-09-10", "expense", "餐饮", 50, "公司午饭")
@@ -85,6 +130,7 @@ def test_query_by_keyword(temp_db, test_user):
     assert len(temp_db.query(test_user, keyword="午饭")) == 1
     assert len(temp_db.query(test_user, keyword="午")) == 1
     assert len(temp_db.query(test_user, keyword="不存在")) == 0
+
 
 # ---------- 汇总 ----------
 def test_summary_basic(temp_db, test_user):
@@ -99,16 +145,25 @@ def test_summary_basic(temp_db, test_user):
     assert s["income_count"] == 1
     assert s["expense_count"] == 2
 
+
 def test_summary_empty(temp_db, test_user):
     s = temp_db.summary(test_user)
-    assert s == {"income": 0.0, "expense": 0.0, "balance": 0.0, 
-                "count": 0, "income_count": 0, "expense_count": 0}
+    assert s == {
+        "income": 0.0,
+        "expense": 0.0,
+        "balance": 0.0,
+        "count": 0,
+        "income_count": 0,
+        "expense_count": 0,
+    }
+
 
 def test_summary_only_income(temp_db, test_user):
     temp_db.add_transaction(test_user, "2026-09-10", "income", "工资", 8000)
     s = temp_db.summary(test_user)
     assert s["expense"] == 0.0
     assert s["balance"] == 8000.0
+
 
 def test_summary_by_month(temp_db, test_user):
     temp_db.add_transaction(test_user, "2026-09-10", "income", "工资", 8000)
@@ -118,6 +173,7 @@ def test_summary_by_month(temp_db, test_user):
     assert [r["month"] for r in rows] == ["2026-09", "2026-10"]
     assert rows[0]["balance"] == 7950
     assert rows[1]["balance"] == 8000
+
 
 def test_summary_by_category_order_and_percent(temp_db, test_user):
     temp_db.add_transaction(test_user, "2026-09-10", "expense", "餐饮", 50)
@@ -131,6 +187,7 @@ def test_summary_by_category_order_and_percent(temp_db, test_user):
     assert rows[0]["percent"] == 80.0
     assert rows[1]["percent"] == 20.0
 
+
 def test_list_categories_sorted(temp_db, test_user):
     temp_db.add_transaction(test_user, "2026-09-10", "income", "工资", 8000)
     temp_db.add_transaction(test_user, "2026-09-11", "expense", "餐饮", 50)
@@ -139,20 +196,39 @@ def test_list_categories_sorted(temp_db, test_user):
     assert cats == sorted(cats)
     assert set(cats) == {"工资", "餐饮", "交通"}
 
+
 def test_list_categories_filter_type(temp_db, test_user):
     temp_db.add_transaction(test_user, "2026-09-10", "income", "工资", 8000)
     temp_db.add_transaction(test_user, "2026-09-11", "expense", "餐饮", 50)
     assert temp_db.list_categories(test_user, "expense") == ["餐饮"]
     assert temp_db.list_categories(test_user, "income") == ["工资"]
 
+
 # ---------- 约束 ----------
 def test_amount_check_constraint(temp_db, test_user):
     """amount < 0 应该被数据库拒绝。"""
     import sqlite3
+
     with pytest.raises(sqlite3.IntegrityError):
         temp_db.add_transaction(test_user, "2026-09-10", "expense", "餐饮", -5)
 
+
 def test_type_check_constraint(temp_db, test_user):
     import sqlite3
+
     with pytest.raises(sqlite3.IntegrityError):
         temp_db.add_transaction(test_user, "2026-09-10", "wrong", "餐饮", 5)
+
+
+def test_get_user_by_username(temp_db):
+    temp_db.create_user("alice", "pass1234")
+    row = temp_db.get_user_by_username("alice")
+    assert row["username"] == "alice"
+    assert row["password_hash"] == "pass1234"
+
+
+def test_get_user_by_id(temp_db):
+    uid = temp_db.create_user("alice", "pass1234")
+    row = temp_db.get_user_by_id(uid)
+    assert row["username"] == "alice"
+    assert row["password_hash"] == "pass1234"

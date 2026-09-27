@@ -1,0 +1,56 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+# 排除的文件/目录
+exclude = [
+    ".venv",
+    "__pycache__",
+    "static/charts",
+    "htmlcov",
+    ".pytest_cache",
+    ".ruff_cache",
+]
+
+[tool.ruff.lint]
+# E/W: pycodestyle 风格检查
+# F: pyflakes 语法/未使用变量
+# I: isort 导入排序
+# N: pep8-naming 命名规范
+# UP: pyupgrade 新语法升级
+# B: flake8-bugbear 常见 bug
+# SIM: flake8-simplify 简化代码
+select = ["E", "W", "F", "I", "N", "UP", "B", "SIM"]
+
+# 忽略的规则
+ignore = [
+    "E501",  # 行太长，交给 formatter 处理
+    "B008",  # 函数默认参数用函数调用
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]  # 测试允许 assert
+"cli.py" = ["N806"]   # CLI 里大写变量名偶有出现
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    ".venv/*",
+    "*/__main__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]

@@ -1,4 +1,5 @@
 """pytest 公共 fixture: 每个测试一个独立的临时数据库。"""
+
 import sys
 from pathlib import Path
 
@@ -8,6 +9,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+
 @pytest.fixture
 def temp_db(tmp_path, monkeypatch):
     """
@@ -16,10 +18,12 @@ def temp_db(tmp_path, monkeypatch):
     测试结束自动清理，不会污染 data/finance.db。
     """
     import db as db_module
+
     test_path = tmp_path / "test.db"
     monkeypatch.setattr(db_module, "DB_PATH", test_path)
     db_module.init_db()
     yield db_module
+
 
 @pytest.fixture
 def raw_client(temp_db, monkeypatch):
@@ -37,18 +41,26 @@ def raw_client(temp_db, monkeypatch):
     with app_module.app.test_client() as c:
         yield c
 
+
 @pytest.fixture
 def client(raw_client):
     """默认已登录的 client"""
-    raw_client.post("/register", data={
-        "username": "tester", "password": "pass1234", "confirm": "pass1234",
-    })
+    raw_client.post(
+        "/register",
+        data={
+            "username": "tester",
+            "password": "pass1234",
+            "confirm": "pass1234",
+        },
+    )
     return raw_client
+
 
 @pytest.fixture
 def test_user(temp_db):
     """创建一个测试用户，返回其 id。所有交易相关测试直接用它。"""
     return temp_db.create_user("testuser", "fake_hash_for_test")
+
 
 @pytest.fixture
 def tester_id(temp_db, client):
