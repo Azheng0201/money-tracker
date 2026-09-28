@@ -4,11 +4,13 @@ import argparse
 import os
 import sys
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import analytics
 import charts
 import db
 import display
+import io_csv
 
 
 # ---------- 输入辅助 ----------
@@ -431,6 +433,36 @@ def cmd_chart(args) -> None:
         print(f"  {p}")
 
 
+def cmd_export(args) -> None:
+    content = io_csv.export_rows(_USER_ID)
+    path = Path(args.output)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    print(f"✅ 已导出到 {path.resolve()}")
+
+
+def cmd_import(args) -> None:
+    path = Path(args.file)
+    if not path.exists():
+        print(f"⚠️ 文件不存在：{path}")
+        return
+    content = path.read_text(encoding="utf-8-sig")
+
+    report = io_csv.import_csv(
+        _USER_ID, content, skip_duplicates=args.skip_duplicates
+    )
+
+    print(f"✅ 导入完成: 成功 {report['imported']} 条")
+    if report["skipped"]:
+        print(f"⏭️ 跳过重复 {report['skipped']} 条")
+    if report["errors"]:
+        print(f"❌ 失败 {len(report['errors'])} 条：")
+        for lineno, err in report["errors"][:20]:
+            print(f"  第 {lineno} 行：{err}")
+        if len(report["errors"]) > 20:
+            print(f"  ...还有 {len(report['errors']) - 20} 条未显示")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Money Tracker 命令行工具")
     subparsers = parser.add_subparsers(dest="cmd")
@@ -485,6 +517,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser_chart.add_argument("--to", dest="date_to", type=_date_arg)
     parser_chart.add_argument("--month", help="只画某月 YYYY-MM")
 
+    # CSV 导出导入
+    parser_export = subparsers.add_parser("export", help="导出为 CSV")
+    parser_export.add_argument("--output", default="data/export.csv",
+                               help="输出路径，默认 data/export.csv")
+
+    parser_import = subparsers.add_parser("import", help="从 CSV 导入")
+    parser_import.add_argument("file", help="CSV 文件路径")
+    parser_import.add_argument("--skip_duplicates", action="store_true",
+                               help="跳过和现有记录完全相同的行")
+
     return parser
 
 
@@ -510,6 +552,8 @@ def main(argv: list[str] | None = None) -> None:
         "categories": cmd_categories,
         "summary": cmd_summary,
         "chart": cmd_chart,
+        "export": cmd_export,
+        "import": cmd_import,
     }
 
     handler = handlers.get(args.cmd)

@@ -1,16 +1,18 @@
 """Flask 网页版：交易列表、统计、图表。"""
 
+from urllib.parse import quote
 from datetime import date as _date
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
 
-from flask import Flask, flash, g, jsonify, redirect, render_template, request, session, url_for
+from flask import Response, Flask, flash, g, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import analytics
 import charts
 import db
+import io_csv
 
 app = Flask(__name__)
 
@@ -425,6 +427,59 @@ def api_monthly():
         }
     )
 
+@app.route("/export")
+@login_required
+def export_csv():
+    content = io_csv.export_rows(g.user["id"])
+    fname_ascii = "transactions.csv"
+    fname_utf8 = f"transactions_{g.user['username']}.csv"
+    disposition = (
+        f"attachment; filename={fname_ascii}; "
+        f"filename*=UTF-8''{quote(fname_utf8)}"
+    )
+    return Response(
+        content,
+        mimetype="test/csv; charset=utf-8",
+        headers={"Content-Disposition": disposition},
+    )
+
+
+@app.route("/import", methods=["GET", "POST"])
+@login_required
+def import_csv():
+    if request.method == "POST":
+        f = request.files.get("csv_file")
+        if not f or not f.filename:
+            flash("请选择 CSV 文件", "error")
+            return render_template("import.html")
+
+        try:
+            content = f.read().decode("utf-8-sig")
+        except UnicodeDecodeError:
+            flash("文件编码不是 UTF-8，请另存为 UTF-8 CSV", "error")
+            return render_template("import_html")
+
+        skip_dup = request.form.get("skip_duplicates") == "on"
+        report = io_csv.import_csv(g.user["id"], content,
+                                   skip_duplicates=skip_dup)
+
+        msg = ""
+        if report["imported"] > 0:
+            msg = f"导入完成：成功 {report['imported']} 条"
+            if report["skipped"]:
+                msg += f", 跳过重复 {report['skipped']} 条"
+            flash(msg, "success")
+
+        if report["errors"]:
+            flash(f"有 {len(report['errors'])} 条记录导入失败", "error")
+            for lineno, err in report["errors"][:10]:
+                flash(f"第 {lineno} 行：{err}", "error")
+            if len(report["errors"]) > 10:
+                flash(f"...还有 {len(report['errors'])} - 10 条错误未显示", "error")
+
+        return redirect(url_for("transactions"))
+
+    return render_template("import.html")
 
 if __name__ == "__main__":
     db.init_db()

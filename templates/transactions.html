@@ -5,7 +5,12 @@
 {% block content %}
     <div class="dash-header">
         <h2>全部交易 （{{ total }} 条）</h2>
-        <a href="{{ url_for('add') }}" class="btn-primary">➕ 添加交易</a>
+        <div>
+            <a href="{{ url_for('export_csv') }}" class="btn-secondary">⬇️ 导出 CSV</a>
+            <a href="{{ url_for('import_csv') }}" class="btn-secondary">⬆️ 导入 CSV</a>
+            <a href="{{ url_for('add') }}" class="btn-primary">➕ 添加交易</a>
+        </div>
+        
     </div>
 
     <form method="get" action="{{ url_for('transactions') }}" class="filter-form">
