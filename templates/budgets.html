@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}预算 · MoneyTracker{% endblock %}
+
+{% block content %}
+    <div class="dash-header">
+        <h2>{{ ym }} 预算执行</h2>
+        <a href="{{ url_for('transactions') }}" class="btn-secondary">← 回到交易</a>
+    </div>
+
+    <section class="budget-form-card">
+        <h3>设置 / 更新预算</h3>
+        <form method="post" class="filter-form" style="box-shadow: none; padding: 0;">
+            <input type="hidden" name="action" value="set">
+            <input type="text" name="category" placeholder="分类，如 餐饮" required>
+            <input type="number" name="limit" placeholder="月度上限" 
+                   step="0.01" min="0" required>
+            <button type="submit">保存</button>
+        </form>
+        <p class="hint">分类同名会覆盖原有预算。</p>
+    </section>
+
+    {% if checks %}
+        <section class="budget-list">
+            {% for c in checks %}
+                <div class="budget-item budget-{{ c. status }}">
+                    <div class="budget-header">
+                        <span class="budget-cat">{{ c.category }}</span>
+                        <span class="budget-amounts">
+                            ￥{{ "%0.2f"|format(c.spent)}} / ￥{{ "%.2f"|format(c.limit) }}
+                        </span>
+                    </div>
+                    
+                    <div class="progress">
+                        {% set w = c.percent if c.percent < 100 else 100 %}
+                        <div class="progress-bar" style="width: {{ w }}%"></div>
+                    </div>
+
+                    <div class="budget-footer">
+                        <span>{{ c.percent }}%</span>
+                        <span>
+                            {% if c.remaining >=0 %}
+                                剩余 ￥{{ "%.2f" | format(c.remaining) }}
+                            {% else %}
+                                超支 ￥{{ "%.2f" | format(-c.remaining) }}
+                            {% endif %}
+                        </span>
+                        <form method="post" style="display: inline;"
+                              onsubmit="return confirm('删除{{ c.category }} 的预算?');">
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="category" value="{{ c.category }}">
+                            <button type="submit" class="btn-delete">删除</button>
+                        </form>
+                    </div>
+                </div>
+            {% endfor %}
+        </section>
+    {% else %}
+        <div class="empty">
+            还没有任何预算。上面添加一条试试，例如"餐饮 500"。
+        </div>
+    {% endif %}
+{% endblock %}

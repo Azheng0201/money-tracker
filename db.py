@@ -36,6 +36,16 @@ def init_db() -> None:
             )
         """)
 
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS budgets (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id       INTEGER NOT NULL,
+                category      TEXT    NOT NULL,
+                monthly_limit REAL    NOT NULL CHECK(monthly_limit >= 0),
+                UNIQUE(user_id, category)
+            )
+        """)
+
         conn.execute("CREATE INDEX IF NOT EXISTS idx_date ON transactions(date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_type ON transactions(type)")
 
@@ -77,6 +87,20 @@ def _migrate_add_user_id() -> None:
 def migrate() -> None:
     """运行所有需要的迁移。开放在 init_db 之后调用。"""
     _migrate_add_user_id()
+
+
+def month_range(ym: str) -> tuple[str, str]:
+    """把 'YYYY-MM' 换成 （本月1号，下月1号）的半开区间。"""
+    if len(ym) != 7 or ym[4] != "-":
+        raise ValueError("月份格式应为 YYYY-MM")
+    y, m = ym.split("-")
+    if not (y.isdigit() and m.isdigit() and 1 <= int(m) <= 12):
+        raise ValueError("月份格式应为 YYYY-MM")
+    y, m = int(y), int(m)
+    start = f"{y:04d}-{m:02d}-01"
+    end = f"{y + 1:04d}-01-01" if m == 12 else f"{y:04d}-{m + 1:02d}-01"
+    return start, end
+
 
 def add_transaction(user_id: int, date: str, type_: str, category: str,
                     amount: float, note: str = "") -> int:
@@ -413,3 +437,89 @@ def get_user_by_id(user_id: int):
         return conn.execute(
             "SELECT * FROM users WHERE id = ?", (user_id,)
         ).fetchone()
+
+def set_budget(user_id: int, category: str, monthly_limit: float) -> None:
+    """
+    设置或更新预算。同一用户同一分类唯一。
+    用 ON CONFLICT 做 upsert——一条 SQL 搞定"有则更新、无则插入"。
+    """
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO budgets(user_id, category, monthly_limit)
+            VALUES (?, ?, ?) 
+            ON CONFLICT(user_id, category) 
+            DO UPDATE SET monthly_limit = excluded.monthly_limit
+        """, (user_id, category, float(monthly_limit)))
+
+def delete_budget(user_id: int, category: str) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM budgets WHERE user_id = ? AND category = ?",
+            (user_id, category),
+        )
+        return cur.rowcount > 0
+
+def list_budgets(user_id: int) -> list[sqlite3.Row]:
+    """按分类名排序返回所有预算。"""
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT * FROM budgets WHERE user_id = ? ORDER BY category",
+            (user_id,),
+        ).fetchall()
+
+def check_budgets(user_id: int, ym: str) -> list[dict]:
+    """
+    检查指定月份的预算执行情况。
+    只统计 expense。没有预算的分类不返回。
+    返回：
+    [
+        {"category": "餐饮", "limit": 500, "spent": 380, "remaining": 120,
+         "percent": 76.0, "status": "ok" | "warning" | "over"},
+        ...
+    ]
+    """
+    start, end = month_range(ym)
+
+    # 一次 SQL 拿到"每个分类的预算 + 该月的实际支出"
+    sql = """
+        SELECT b.category,
+               b.monthly_limit AS limit_amt,
+               COALESCE(SUM(t.amount), 0) AS spent
+        FROM budgets b
+        LEFT JOIN transactions t
+          ON t.category = b.category
+         AND t.user_id = b.user_id
+         AND t.type = 'expense'
+         AND t.date >= ? AND t.date < ? 
+        WHERE b.user_id = ? 
+        GROUP BY b.category, b.monthly_limit 
+        ORDER BY b.category
+    """
+    with get_conn() as conn:
+        rows = conn.execute(sql, (start, end, user_id)).fetchall()
+
+    result = []
+    for r in rows:
+        limit_amt = float(r["limit_amt"])
+        spent = float(r["spent"] or 0)
+        remaining = limit_amt - spent
+        percent = round(spent / limit_amt * 100, 1) if limit_amt > 0 else 0.0
+
+        if limit_amt <= 0:
+            status = "ok"
+        elif percent >= 100:
+            status = "over"
+        elif percent >= 80:
+            status = "warning"
+        else:
+            status = "ok"
+
+        result.append({
+            "category": r["category"],
+            "limit": limit_amt,
+            "spent": spent,
+            "remaining": remaining,
+            "percent": percent,
+            "status": status,
+        })
+    return result

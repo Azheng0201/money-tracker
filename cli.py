@@ -206,7 +206,7 @@ def action_summary() -> None:
     elif sub == "2":
         ym = input(" 月份（YYYY-MM，回车=本月）：").strip() or datetime.now().strftime("%Y-%m")
         try:
-            df, dt = _month_range(ym)
+            df, dt = db.month_range(ym)
         except ValueError as e:
             print(f"  ⚠️ {e}")
             return
@@ -219,19 +219,6 @@ def action_summary() -> None:
         display.print_category_table(db.summary_by_category(_USER_ID, "income"), "income")
     else:
         print("  ⚠️ 无效选项。")
-
-
-def _month_range(ym: str) -> tuple[str, str]:
-    """把 'YYYY-MM' 换成 （本月1号，下月1号）的半开区间。"""
-    if len(ym) != 7 or ym[4] != "-":
-        raise ValueError("月份格式应为 YYYY-MM")
-    y, m = ym.split("-")
-    if not (y.isdigit() and m.isdigit() and 1 <= int(m) <= 12):
-        raise ValueError("月份格式应为 YYYY-MM")
-    y, m = int(y), int(m)
-    start = f"{y:04d}-{m:02d}-01"
-    end = f"{y + 1:04d}-01-01" if m == 12 else f"{y:04d}-{m + 1:02d}-01"
-    return start, end
 
 
 # ---------- 交互菜单 ----------
@@ -378,7 +365,7 @@ def cmd_summary(args) -> None:
     title = "全部汇总"
     if args.month:
         try:
-            date_from, date_to = _month_range(args.month)
+            date_from, date_to = db.month_range(args.month)
         except ValueError as e:
             print(f"⚠️ {e}")
             return
@@ -399,7 +386,7 @@ def cmd_chart(args) -> None:
     date_to = _inclusive_to_exclusive(args.date_to)
     if args.month:
         try:
-            date_from, date_to = _month_range(args.month)
+            date_from, date_to = db.month_range(args.month)
         except ValueError as e:
             print(f"⚠️ {e}")
             return
@@ -461,6 +448,41 @@ def cmd_import(args) -> None:
             print(f"  第 {lineno} 行：{err}")
         if len(report["errors"]) > 20:
             print(f"  ...还有 {len(report['errors']) - 20} 条未显示")
+
+
+def cmd_budget(args) -> None:
+    if args.budget_cmd == "set":
+        try:
+            limit = float(args.amount)
+            if limit < 0:
+                raise ValueError
+        except ValueError:
+            print("⚠️ 预算金额必须是非负数字")
+            return
+        db.set_budget(_USER_ID, args.category, limit)
+        print(f"✅ 已设置 {args.category} 月预算 ￥{limit:.2f}")
+
+    elif args.budget_cmd == "list":
+        ym = args.month or date.today().strftime("%Y-%m")
+        checks = db.check_budgets(_USER_ID, ym)
+        if not checks:
+            print("(还没有任何预算)")
+            return
+        print(f"\n{ym} 预算执行:\n")
+        print(f"  {'分类':<10}{'已花':>10}{'上限':>10}{'剩余':>10}  {'%':>6}")
+        print("  " + "-" * 52)
+        for c in checks:
+            flag = {"ok": " ", "warning": "!", "over": "❌"}[c["status"]]
+            rem = c["remaining"]
+            rem_s = f"{rem:>10.2f}" if rem >= 0 else f"-{rem:>9.2f}"
+            print(f"  {c['category']:<10}{c['spent']:>10.2f}{c['limit']:>10.2f}"
+                  f"{rem_s:>10}  {c['percent']:>5.1f}% {flag}")
+
+    elif args.budget_cmd == "delete":
+        if db.delete_budget(_USER_ID, args.category):
+            print(f"✅ 已删除 {args.category} 的预算")
+        else:
+            print(f"⚠️ 没有找到 {args.category} 的预算")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -527,6 +549,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser_import.add_argument("--skip_duplicates", action="store_true",
                                help="跳过和现有记录完全相同的行")
 
+    parser_budget = subparsers.add_parser("budget", help="预算管理")
+    parser_budget_sub = parser_budget.add_subparsers(dest="budget_cmd", required=True)
+
+    p_bs = parser_budget_sub.add_parser("set", help="设置或更新预算")
+    p_bs.add_argument("category")
+    p_bs.add_argument("amount", type=float)
+
+    p_bl = parser_budget_sub.add_parser("list", help="查看预算执行")
+    p_bl.add_argument("--month", help="YYYY-MM, 默认本月")
+
+    p_bd = parser_budget_sub.add_parser("delete", help="删除预算")
+    p_bd.add_argument("category")
+
     return parser
 
 
@@ -554,6 +589,7 @@ def main(argv: list[str] | None = None) -> None:
         "chart": cmd_chart,
         "export": cmd_export,
         "import": cmd_import,
+        "budget": cmd_budget,
     }
 
     handler = handlers.get(args.cmd)

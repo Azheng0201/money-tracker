@@ -3,6 +3,27 @@
 {% block title %}仪表盘 · MoneyTracker{% endblock %}
 
 {% block content %}
+    {% if over_budgets %}
+        <div class="budget-alert budget-alert-over">
+            <strong>⚠️ 本月超支: </strong>
+            {% for b in over_budgets %}
+                {{ b.category }} (￥{{ "%.2f"|format(b.spent) }}/￥{{ "%.2f"|format(b.limit) }})
+                {% if not loop.last %}·{% endif %}
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {% if warning_budgets %}
+        <div class="budget-alert budget-alert-over">
+            <strong>注意: </strong>
+            {% for b in warning_budgets %}
+                {{ b.category }} ({{ b.percent }}%)
+                {% if not loop.last %}·{% endif %}
+            {% endfor %}
+            接近预算上限
+        </div>
+    {% endif %}
+
     <div class="dash-header">
         <h2>仪表盘</h2>
         <a href="{{ url_for('add') }}" class="btn-primary">➕ 添加交易</a>

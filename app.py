@@ -129,29 +129,25 @@ def index():
     _ensure_charts()
     s = db.summary(g.user["id"])
     recent = db.recent_transactions(g.user["id"], 5)
+
+    # 本月预算检查
+    this_month = _date.today().strftime("%Y-%m")
+    budget_checks = db.check_budgets(g.user["id"], this_month)
+    over_budgets = [c for c in budget_checks if c["status"] == "over"]
+    warning_budgets = [c for c in budget_checks if c["status"] == "warning"]
+
     return render_template(
         "dashboard.html",
         summary=s,
         recent=recent,
         chart_version=_chart_version(),
         has_charts=all((CHART_DIR / n).exists() for n in CHART_FILES),
+        over_budgets=over_budgets,
+        warning_budgets=warning_budgets,
     )
 
 
 PER_PAGE = 20
-
-
-def _month_range(ym: str) -> tuple[str, str]:
-    """'YYYY-MM' → （本月1号，下月1号）。"""
-    if len(ym) != 7 or ym[4] != "-":
-        raise ValueError("月份格式应为 YYYY-MM")
-    y, m = ym.split("-")
-    if not (y.isdigit() and m.isdigit() and 1 <= int(m) <= 12):
-        raise ValueError("月份格式应为 YYYY-MM")
-    y, m = int(y), int(m)
-    start = f"{y:04d}-{m:02d}-01"
-    end = f"{y + 1:04d}-01-01" if m == 12 else f"{y:04d}-{m + 1:02d}-01"
-    return start, end
 
 
 @app.route("/transactions")
@@ -171,7 +167,7 @@ def transactions():
     date_from = date_to = None
     if month:
         try:
-            date_from, date_to = _month_range(month)
+            date_from, date_to = db.month_range(month)
         except ValueError:
             flash(f"⚠️ 月份格式错误：{month}", "error")
             month = None
@@ -480,6 +476,56 @@ def import_csv():
         return redirect(url_for("transactions"))
 
     return render_template("import.html")
+
+
+@app.route("/budgets", methods=["GET", "POST"])
+@login_required
+def budgets():
+    uid = g.user["id"]
+
+    if request.method == "POST":
+        action = request.form.get("action")
+
+        if action == "set":
+            category = request.form.get("category", "").strip()
+            limit_s = request.form.get("limit", "").strip()
+            if not category:
+                flash("分类不能为空", "error")
+            else:
+                try:
+                    limit = float(limit_s)
+                    if limit < 0:
+                        raise ValueError
+                    db.set_budget(uid, category, limit)
+                    flash(f"✅ 已设置 {category} 月预算 ￥{limit:.2f}", "success")
+                except ValueError:
+                    flash("预算金额必须是非负数字", "error")
+
+        elif action == "delete":
+            category = request.form.get("category", "").strip()
+            if db.delete_budget(uid, category):
+                flash(f"🗑️ 已删除 {category} 的预算", "success")
+            else:
+                flash("预算不存在", "error")
+
+        return redirect(url_for("budgets"))
+
+    # GET: 显示当前月执行情况
+    ym = request.args.get("month") or _date.today().strftime("%Y-%m")
+    try:
+        db.month_range(ym)
+    except ValueError:
+        flash(f"⚠️ 月份格式错误：{ym}", "error")
+        ym = _date.today().strftime("%Y-%m")
+
+    checks = db.check_budgets(uid, ym)
+    raw_budgets = db.list_budgets(uid)
+    return render_template(
+        "budgets.html",
+        checks=checks,
+        budgets=raw_budgets,
+        ym=ym,
+    )
 
 if __name__ == "__main__":
     db.init_db()
