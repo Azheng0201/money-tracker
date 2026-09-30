@@ -413,7 +413,7 @@ def refresh_charts():
 @app.route("/api/monthly")
 @login_required
 def api_monthly():
-    df = analytics.load_df()
+    df = analytics.load_df(g.user["id"])
     m = analytics.monthly_df(df)
     return jsonify(
         {

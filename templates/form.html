@@ -3,47 +3,49 @@
 {% block title %}{{ form_title }} · MoneyTracker{% endblock %}
 
 {% block content %}
-    <h2>{{ form_title }}</h2>
-    
-    <form method="post" action="{{ form_action }}" class="tx-form">
-        <div class="form-row">
-            <label for="date">日期</label>
-            <input type="date" name="date" id="date" value="{{ form.date }}" required>
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">{{ form_title }}</h2>
+                    <form method="post" action="{{ form_action }}">
+                        <div class="mb-3">
+                            <label class="form-label">日期</label>
+                            <input type="date" name="date" value="{{ form.date }}" 
+                                   class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">类型</label>
+                            <select name="type" class="form-select">
+                                <option value="expense" 
+                                    {{ "selected" if form.type == "expense" else "" }}>支出</option>
+                                <option value="income" 
+                                    {{ "selected" if form.type == "income" else "" }}>收入</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">分类</label>
+                            <input type="text" name="category" value="{{ form.category }}"
+                                   class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">金额</label>
+                            <input type="number" name="amount" id="amount"
+                                   value="{{ form.get('amount_s', form.get('amount', '')) }}"
+                                   class="form-control" step="0.01" min="0" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">备注</label>
+                            <input type="text" name="note" value="{{ form.note }}" 
+                                   class="form-control">
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">{{ submit_label }}</button>
+                            <a href="{{ url_for('transactions') }}" class="btn btn-outline-secondary">取消</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
-
-        <div class="form-row">
-            <label for="type">类型</label>
-            <select name="type" id="type">
-                <option value="expense" 
-                    {{ "selected" if form.type == "expense" else "" }}>支出</option>
-                <option value="income" 
-                    {{ "selected" if form.type == "income" else "" }}>收入</option>
-            </select>
-        </div>
-
-        <div class="form-row">
-            <label for="category">分类</label>
-            <input type="text" name="category" id="category"
-                   value="{{ form.category }}"
-                   placeholder="如 餐饮 / 交通 / 工资" required>
-        </div>
-
-        <div class="form-row">
-            <label for="amount">金额</label>
-            <input type="number" name="amount" id="amount"
-                   value="{{ form.get('amount_s', form.get('amount', '')) }}"
-                   step="0.01" min="0" required>
-        </div>
-
-        <div class="form-row">
-            <label for="note">备注</label>
-            <input type="text" name="note" id="note"
-                   value="{{ form.note }}" placeholder="可空">
-        </div>
-
-        <div class="form-actions">
-            <button type="submit">{{ submit_label }}</button>
-            <a href="{{ url_for('transactions') }}" class="cancel">取消</a>
-        </div>
-    </form>
+    </div>
 {% endblock %}

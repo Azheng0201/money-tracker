@@ -2,33 +2,40 @@
 {% block title %}导入 CSV · MoneyTracker{% endblock %}
 
 {% block content %}
-    <h2>导入 CSV</h2>
-    <p>CSV 第一行必须是表头，字段固定：</p>
-    <pre style="background: #f5f5f5; padding: 12px; border-radius: 4px; font-size: 13px;">date,type,category,amount,note
-        2026-09-10,income,工资,8000.00,9月工资
-        2026-09-11,expense,餐饮,38.50,午饭</pre>
-    <p style="color: #666; font-size: 13px;">
-        date 为 <code>YYYY-MM-DD</code>; type 只能是 <code>income</code> 或 <code>expense</code>;
-        金额为非负数字; note 可空。
-    </p>
+    <div class="row justify-content-center">
+        <div class="col-md-10 col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">导入 CSV</h2>
+                    <p class="text-muted small mt-2 mb-0">CSV 第一行必须是表头，字段固定：</p>
+                    <pre style="background: #f5f5f5; padding: 12px; border-radius: 4px; font-size: 13px;">date,type,category,amount,note
+                        2026-09-10,income,工资,8000.00,9月工资
+                        2026-09-11,expense,餐饮,38.50,午饭</pre>
+                    <p class="text-muted small mt-2 mb-0"style="color: #666; font-size: 13px;">
+                        date 为 <code>YYYY-MM-DD</code>; type 只能是 <code>income</code> 或 <code>expense</code>;
+                        金额为非负数字; note 可空。
+                    </p>
 
-    <form method="post" enctype="multipart/form-data"
-          class="tx-form" style="max-width: 520px;">
-        <div class="form-row">
-            <label for="csv_file">CSV 文件</label>
-            <input type="file" name="csv_file" id="csv_file"
-                   accept=".csv,test/csv" required>
+                    <form method="post" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label class="form-label">CSV 文件</label>
+                            <input type="file" name="csv_file" accept=".csv,test/csv" 
+                                   class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            
+                            <label class="form-label">
+                                <input type="checkbox" name="skip_duplicates" class="form-check-input">
+                                跳过和现有记录完全相同的行
+                            </label>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <button class="btn btn-primary">上传并导入</button>
+                            <a href="{{ url_for('transactions') }}" class="small">取消</a>
+                        </div>
+                    </form>    
+                </div>
+            </div>
         </div>
-        <div class="form-row">
-            <label></label>
-            <label style="width: auto; display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" name="skip_duplicates">
-                跳过和现有记录完全相同的行
-            </label>
-        </div>
-        <div class="form-actions">
-            <button type="submit">上传并导入</button>
-            <a href="{{ url_for('transactions') }}" class="cancel">取消</a>
-        </div>
-    </form>
+    </div>
 {% endblock %}

@@ -4,17 +4,20 @@
 
 {% block content %}
     {% if over_budgets %}
-        <div class="budget-alert budget-alert-over">
-            <strong>⚠️ 本月超支: </strong>
-            {% for b in over_budgets %}
-                {{ b.category }} (￥{{ "%.2f"|format(b.spent) }}/￥{{ "%.2f"|format(b.limit) }})
-                {% if not loop.last %}·{% endif %}
-            {% endfor %}
+        <div class="alert alert-danger d-flex justify-content-between align-items-center">
+            <div>
+                <strong>⚠️ 本月超支: </strong>
+                {% for b in over_budgets %}
+                    {{ b.category }} (￥{{ "%.2f"|format(b.spent) }}/￥{{ "%.2f"|format(b.limit) }})
+                    {% if not loop.last %}·{% endif %}
+                {% endfor %}
+            </div>
+            <a href="{{ url_for('budgets') }}" class="btn btn-sm btn-outline-danger">查看预算</a>
         </div>
     {% endif %}
 
     {% if warning_budgets %}
-        <div class="budget-alert budget-alert-over">
+        <div class="alert alert-warning">
             <strong>注意: </strong>
             {% for b in warning_budgets %}
                 {{ b.category }} ({{ b.percent }}%)
@@ -24,137 +27,126 @@
         </div>
     {% endif %}
 
-    <div class="dash-header">
-        <h2>仪表盘</h2>
-        <a href="{{ url_for('add') }}" class="btn-primary">➕ 添加交易</a>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="h4 mb-0">仪表盘</h2>
+        <a href="{{ url_for('add') }}" class="btn btn-primary">➕ 添加交易</a>
     </div>
 
-    <section class="cards">
-        <div class="card card-income">
-            <div class="card-label">总收入</div>
-            <div class="card-value">{{ summary.income | money }}</div>
-            <div class="card-sub">{{ summary.income_count }} 笔</div>
-        </div>
-
-        <div class="card card-expense">
-            <div class="card-label">总支出</div>
-            <div class="card-value">{{ summary.expense | money }}</div>
-            <div class="card-sub">{{ summary.expense_count }} 笔</div>
-        </div>
-
-        <div class="card {{ 'card-positive' if summary.balance >= 0 else 'card-negative' }}">
-            <div class="card-label">结余</div>
-            <div class="card-value">{{ summary.balance | money }}</div>
-            <div class="card-sub">共 {{ summary.count }} 笔记录</div>
-        </div>
-
-        <div class="card card-neutral">
-            <div class="card-label">总笔数</div>
-            <div class="card-value">{{ summary.count }}</div>
-            <div class="card-sub">全部交易</div>
-        </div>
-    </section>
-
-    <section class="charts">
-        <div class="charts-header">
-            <h3>统计图表</h3>
-            <form method="post" action="{{ url_for('refresh_charts') }}">
-                <button type="submit" class="btn-secondary">🔄️ 刷新图表</button>
-            </form>
-        </div>
-
-        <!-- 新增：Chart.js 交互式图 -->
-        <div class="chart-item chart-item-wide">
-            <h4>月度收支(交互式)</h4>
-            <div class="chart-canvas-wrap">
-                <canvas id="chartMonthly"></canvas>
-                <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-                <script>
-                    fetch("{{ url_for('api_monthly') }}")
-                        .then(r => r.json())
-                        .then(d => {
-                        new Chart(document.getElementById("chartMonthly"), {
-                            type: "bar",
-                            data: {
-                                labels: d.months,
-                                datasets: [
-                                    { label: "收入", data: d.income, backgroundColor: "#4CAF50" },
-                                    { label: "支出", data: d.expense, backgroundColor: "#F44336" },
-                                ],
-                            },
-                            options: { responsive: true, maintainAspectRatio: false },
-                        });
-                        });
-                </script>
-            </div>
-        </div>
-
-        {% if has_charts %}
-            <div class="chart-grid">
-                <div class="chart-item">
-                    <h4>月度收支</h4>
-                    <img src="{{ url_for('static', filename='charts/monthly_bar.png') }}?v={{ chart_version }}"
-                         alt="月度收支柱状图">
-                </div>
-                <div class="chart-item">
-                    <h4>结余趋势</h4>
-                    <img src="{{ url_for('static', filename='charts/balance_line.png') }}?v={{ chart_version }}"
-                         alt="结余趋势折线图">
-                </div>
-                <div class="chart-item chart-item-wide">
-                    <h4>支出分类占比</h4>
-                    <img src="{{ url_for('static', filename='charts/pie_expense.png') }}?v={{ chart_version }}"
-                         alt="支出分类饼图">
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="card card-income h-100">
+                <div class="card-body">
+                    <div class="card-label">总收入</div>
+                    <div class="card-value text-success">{{ summary.income | money }}</div>
+                    <div class="card-sub">{{ summary.income_count }} 笔</div>
                 </div>
             </div>
-        {% else %}
-            <div class="empty">
-                还没有数据生成图表。先<a href="{{ url_for('add') }}">添加交易</a>，
-                再点右上角"刷新图表"。
-            </div>
-        {% endif %}
-    </section>
+        </div>
 
-    <section class="recent">
-        <h3>最近交易</h3>
-        {% if recent %}
-            <table>
-                <thead>
-                    <tr>
-                        <th>日期</th>
-                        <th>类型</th>
-                        <th>分类</th>
-                        <th>金额</th>
-                        <th>备注</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for r in recent %}
-                        <tr>
-                            <td>{{ r["date"] }}</td>
-                            <td>{{ "收入" if r["type"] == "income" else "支出" }}</td>
-                            <td>{{ r["category"] }}</td>
-                            <td class="{{ r['type'] }}">
-                                {{ "+" if r["type"] == "income" else "-" }}
-                                {{ r["amount"] | money }}
-                            </td>
-                            <td>{{ r["note"] }}</td>
-                            <td><a href="{{ url_for('edit', tid=r['id']) }}"
-                                   class="btn-edit">编辑</a></td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            <p class="more">
-                <a href="{{ url_for('transactions') }}">查看全部→</a>
-            </p>
-        {% else %}
-            <div class="empty">
-                还没有任何记录。试试
-                <a href="{{ url_for('add') }}">添加第一条</a>,
-                或者用<code>python .\cli.py add</code>。
+        <div class="col-6 col-md-3">
+            <div class="card card-expense h-100">
+                <div class="card-body">
+                    <div class="card-label">总支出</div>
+                    <div class="card-value text-danger">{{ summary.expense | money }}</div>
+                    <div class="card-sub">{{ summary.expense_count }} 笔</div>
+                </div>
             </div>
-        {% endif %}
-    </section>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card {{ 'card-positive' if summary.balance >= 0 else 'card-negative' }}">
+                <div class="card-body">
+                    <div class="card-label">结余</div>
+                    <div class="card-value {{'text-success' if summary.balance >= 0 else 'text-danger' }}">
+                        {{ summary.balance | money }}
+                    </div>
+                    <div class="card-sub">共 {{ summary.count }} 笔记录</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card card-neutral h-100">
+                <div class="card-body">
+                    <div class="card-label">总笔数</div>
+                    <div class="card-value text-primary">{{ summary.count }}</div>
+                    <div class="card-sub">全部交易</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between mb-3">
+                <h3 class="h6 mb-0">统计图表</h3>
+                <form method="post" action="{{ url_for('refresh_charts') }}">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">🔄️ 刷新图表</button>
+                </form>
+            </div>
+            {% if has_charts %}
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <img src="{{ url_for('static', filename='charts/monthly_bar.png') }}?v={{ chart_version }}"
+                             class="img-fluid rounded" alt="月度收支">
+                    </div>
+                    <div class="col-md-6">
+                        <img src="{{ url_for('static', filename='charts/balance_line.png') }}?v={{ chart_version }}"
+                             class="img-fluid rounded" alt="结余趋势">
+                    </div>
+                    <div class="col-12">
+                        <img src="{{ url_for('static', filename='charts/pie_expense.png') }}?v={{ chart_version }}"
+                             class="img-fluid rounded" alt="支出分类">
+                    </div>
+                </div>
+            {% else %}
+                <div class="text-muted text-center py-4">
+                    还没有数据生成图表。先<a href="{{ url_for('add') }}">添加交易</a>，
+                    再点右上角"刷新图表"。
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <h3 class="h6 mb-3">最近交易</h3>
+            {% if recent %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>日期</th><th>类型</th><th>分类</th>
+                                <th class="text-end">金额</th><th>备注</th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in recent %}
+                                <tr>
+                                    <td>{{ r["date"] }}</td>
+                                    <td>{{ "收入" if r["type"] == "income" else "支出" }}</td>
+                                    <td>{{ r["category"] }}</td>
+                                    <td class="text-end {{ r['type'] }}">
+                                        {{ "+" if r["type"] == "income" else "-" }}
+                                        {{ r["amount"] | money }}
+                                    </td>
+                                    <td>{{ r["note"] }}</td>
+                                    <td class="text-end">
+                                        <a href="{{ url_for('edit', tid=r['id']) }}"
+                                        class="btn btn-sm btn-outline-primary">编辑</a>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-end mt-2">
+                    <a href="{{ url_for('transactions') }}" class="small">查看全部→</a>
+                </div>
+            {% else %}
+                <div class="text-muted text-center py-4">
+                    还没有任何记录。去<a href="{{ url_for('add') }}">添加第一条</a>吧。
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    
 {% endblock %}
