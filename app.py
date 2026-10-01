@@ -9,6 +9,11 @@ from pathlib import Path
 from flask import Response, Flask, flash, g, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import analytics
 import charts
 import db
@@ -73,7 +78,10 @@ def money_filter(v):
     return f"￥{float(v):,.2f}"
 
 
-app.secret_key = "dev-secret-change-me"  # flash 需要，上线必须换成随机值
+app.secret_key = os.environ.get(
+    "SECRET_KEY",
+    "dev-secret-change-me-in-production"
+)
 
 
 def _validate_tx_form(form) -> tuple[list[str], dict]:

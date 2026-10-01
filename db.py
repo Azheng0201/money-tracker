@@ -1,8 +1,10 @@
 import sqlite3
+import os
 from datetime import datetime as _dt
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "data" / "finance.db"
+_env_db = os.environ.get("DB_PATH")
+DB_PATH = Path(_env_db) if _env_db else Path(__file__).parent / "data" / "finance.db"
 
 def get_conn() -> sqlite3.Connection:
     """返回一个连接， row 可以像字典一样用列名访问。"""

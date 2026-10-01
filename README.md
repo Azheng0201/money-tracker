@@ -10,21 +10,44 @@
 - 汇总：总收入、总支出、结余、笔数
 - 按月 / 分类汇总
 - 生成图表 PNG (柱状图、饼图、折线图)
+- 预算：设置 / 更新预算、预算提醒、删除预算
+- 数据导入导出
 
 ### 网页 (app.py)
+- 登录 / 注册 / 登出
 - 仪表盘：4 张统计卡片 + 最近 5 条交易
 - 交易列表：筛选 + 分页
 - 添加 / 编辑 / 删除表单 (含服务端校验)
 - 图表区：matplotlib PNG (可一键刷新)
-- 交互式图表：Chart.js 月度收支
+- 预算管理
+
+### 认证与数据隔离
+- 注册 / 登录 / 登出 （werkzeug 密码哈希）
+- 每个用户只能看到自己的交易、预算、图表
+
+### 数据导入导出
+- CLI / Web 双入口
+- CSV UTF-8 + BOM，Excel 双击不乱码
+- 坏行跳过并报告行数，支持去重
+
+### 预算提醒
+- 分类级月度预算
+- 进度条 + 三档状态（ok / warning / over）
+- 仪表盘顶部自动警告
+
+### 界面
+- Bootstrap 5 响应式布局
+- 暗黑模式切换（localStorage 记忆）
 
 ## 技术栈
 
-- Python 3.10+
+- Python 3.12
 - SQLite (`sqlite3` 标准库)
-- pandas / matplotlib (分析与绘图)
-- Flask + Jinja2 (Web)
-- pytest (测试)
+- pandas / numpy / matplotlib (分析与绘图)
+- Flask + Jinja2 (Web) + Bootstrap (页面美化)
+- pytest + pytest-cov (测试及覆盖率)
+- ruff 代码检查和格式化
+- Werkzeug Security 安全机制与数据验证
 
 ## 项目结构
 
@@ -37,13 +60,17 @@ money-tracker/
 |—— charts.py        # matplotlib 图表
 |—— display.py       # 终端格式化输出
 |—— model.py         # 数据模型 (dataclass)
-|—— templates/       # Jinja2 模板
+|—— io_csv.py        # 数据导入导出(CSV)
+|—— run_prod.py      # 本地启动模拟生产环境
+|—— templates/       # Jinja2 模板 + Bootstrap 响应式布局
 |—— static/    
 |   |—— style.css
 |   |—— charts/      # 生成的 PNG
-|—— tests/           # pytest
+|—— tests/           # pytest / pytest-cov
 |—— data/            # finance.db (不入库)
+|—— scripts/         # check.ps1 一键检测脚本（Windows powershell）
 |—— requirements.txt
+|—— pyproject.toml
 ```
 
 ## 安装
@@ -136,8 +163,25 @@ pip install -r requirements.txt
 pip freeze > requirements.txt  # 改完后锁版本
 ```
 
+## 部署
+
+见 [DEPLOY.md](DEPLOY.md)。本地快速模拟生产：
+
+```bash
+python run_prod.py
+```
+
+## 环境变量
+| 变量 | 说明 | 默认 |
+|---|---|---|
+| `SECRET_KEY` | Flask session 密钥，生产必填 | `dev-secret-change-me...` |
+| `DB_PATH` | SQLite 路径 | `data/finance.db` |
+| `FLASK_DEBUG` | 是否开 debug（生产设为 0） | `1` |
+| `HOST` / `PORT` | run_prod.py 绑定地址 | `127.0.0.1` / `8000` |
+
 ## 版本记录
 
+- **v2.0** (Day 21) 最终版：用户认证、数据隔离、CSV 导入导出、预算提醒、Bootstrap 5 UI、暗黑模式、可部署
 - **v1.0** (Day 14) Web 完整：仪表盘、筛选分页、增删改、图表、pytest 全绿
 - **v0.3** (Day 7) 命令行完整：CRUD、筛选、汇总、图表、单元测试
 - **v0.1** (Day 2) 基础 CLI + SQLite

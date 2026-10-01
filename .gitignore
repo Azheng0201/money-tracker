@@ -16,3 +16,6 @@ htmlcov/
 .vscode/
 .idea/
 *.swp
+
+# 环境变量
+.env
