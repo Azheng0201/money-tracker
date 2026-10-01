@@ -60,7 +60,7 @@ waitress-serve --listen=127.0.0.1:8000 app:app
 
 ## 部署到 PythonAnywhere（免费，SQLite 持久）
 
-1. 注册 [PythonAnywhere](https://www.pyhtonanywhere.com)
+1. 注册 [PythonAnywhere](https://www.pythonanywhere.com)
 2. 上传代码（git clone 或用 Files 上传）
 3. 创建 virtualenv，`pip install -r requirements.txt`
 4. Web 标签 → Add a new wep app → 选 **Flask**
